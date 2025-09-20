@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import Link from 'next/link';
 
 // Register GSAP plugins
 if (typeof window !== 'undefined') {
@@ -68,7 +69,7 @@ const Nav = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex-shrink-0">
-            <h1 className="text-2xl font-bold text-white">Chess</h1>
+            <h1 className="text-2xl font-bold text-white">Only Pawns</h1>
           </div>
 
           <div className="flex items-center gap-6">
@@ -104,9 +105,9 @@ const Nav = () => {
 
           {/* Get Started Button */}
           <div className="hidden md:block">
-            <button className="animate-item rounded-sm bg-lime-400 px-4 py-2 text-black font-semibold shadow-lg hover:bg-lime-300 transition">
+            <Link href="/signup" className="animate-item rounded-sm bg-lime-400 px-4 py-2 text-black font-semibold shadow-lg hover:bg-lime-300 transition">
               Get Started
-            </button>
+            </Link>
           </div>
 
           {/* Mobile menu button */}
