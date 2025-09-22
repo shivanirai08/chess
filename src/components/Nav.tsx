@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Link from 'next/link';
+import Button from '@/components/Button'
 
 // Register GSAP plugins
 if (typeof window !== 'undefined') {
@@ -163,12 +164,11 @@ const Nav = () => {
           >
             Contact Us
           </a>
-          <button onClick={closeMobileMenu}
-            className="animate-item rounded-sm bg-lime-400 px-4 py-2 text-black font-semibold shadow-lg hover:bg-lime-300 transition">
-              Get Started
-            </button>
-          </div>
+          <Button onClick={closeMobileMenu} variant="primary" type="button" >
+            Get Started
+          </Button>
         </div>
+      </div>
       )}
     </nav>
   );

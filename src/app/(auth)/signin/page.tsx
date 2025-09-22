@@ -4,6 +4,7 @@ import Input from "@/components/Input";
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Button from "@/components/Button";
 
 export default function Page() {
     const [email, setEmail] = useState("");
@@ -80,12 +81,9 @@ export default function Page() {
                         </div>
 
                         {/* Continue Button */}
-                        <button 
-                            type="submit"
-                            className="w-full bg-primary hover:bg-secondary text-black font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-lg"
-                        >
+                        <Button type="submit" variant="primary" >
                             Continue
-                        </button>
+                        </Button>
 
                         {/* Sign Up Link */}
                         <p className="text-white text-center">
