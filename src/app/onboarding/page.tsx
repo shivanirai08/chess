@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import Input from "@/components/Input";
@@ -11,7 +11,6 @@ import Image from "next/image";
 export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
-  const [avatar, setAvatar] = useState(1);
   const [mode, setMode] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const [selectedTime, setTime] = useState<string | null>(null);
@@ -87,7 +86,7 @@ export default function Onboarding() {
             {step === 0 && (
               <div className="flex flex-col items-center">
                 <p className="text-3xl md:text-4xl font-semibold mb-6">
-                  What's your name?
+                  What&apos;s your name?
                 </p>
                 <div className="space-y-6 w-md">
                   <Input

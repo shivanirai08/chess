@@ -79,7 +79,7 @@ function RotatingLines() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setLineIndex((prev) => (prev + 1) % lines.length);
+      setLineIndex((prev) => (prev + 1) % 4);
     }, 3000); // change every 3s
     return () => clearInterval(interval);
   }, []);

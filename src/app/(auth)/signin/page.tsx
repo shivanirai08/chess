@@ -87,7 +87,7 @@ export default function Page() {
 
                         {/* Sign Up Link */}
                         <p className="text-white text-center">
-                            Don't have an account?{" "}
+                            Don&apos;t have an account?{" "}
                             <Link href="/signup" className="text-primary hover:text-primary hover:underline">
                                 Sign up
                             </Link>
