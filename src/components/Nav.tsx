@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Link from 'next/link';
-import Button from '@/components/Button'
+import Button from '@/components/Button';
 
 // Register GSAP plugins
 if (typeof window !== 'undefined') {
@@ -13,6 +13,7 @@ if (typeof window !== 'undefined') {
 
 const Nav = () => {
   const navRef = useRef<HTMLElement>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const toggleMobileMenu = () => {
@@ -24,15 +25,30 @@ const Nav = () => {
   };
 
   useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!navRef.current) return;
 
-    // Set initial state - hidden above viewport
-    gsap.set(navRef.current, {
-      y: -100,
-      opacity: 0,
-    });
+    if (isMobile) {
+      // For mobile: nav is always visible
+      gsap.set(navRef.current, { y: 0, opacity: 1 });
+      return;
+    }
 
-    // Create scroll trigger animation
+    // For desktop: animate nav on scroll
+    gsap.set(navRef.current, { y: -100, opacity: 0 });
+
     const scrollTrigger = ScrollTrigger.create({
       trigger: 'body',
       start: '50% top',
@@ -58,7 +74,7 @@ const Nav = () => {
     return () => {
       scrollTrigger.kill();
     };
-  }, []);
+  }, [isMobile]);
 
   return (
     <nav
@@ -74,60 +90,43 @@ const Nav = () => {
           </div>
 
           <div className="flex items-center gap-6">
-          {/* Navigation Links */}
-          <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-8">
-              <a
-                href="#home"
-                className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium transition-colors duration-200"
-              >
-                Home
-              </a>
-              <a
-                href="#about"
-                className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium transition-colors duration-200"
-              >
-                About Us
-              </a>
-              <a
-                href="#features"
-                className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium transition-colors duration-200"
-              >
-                Features
-              </a>
-              <a
-                href="#contact"
-                className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium transition-colors duration-200"
-              >
-                Contact Us
-              </a>
+            {/* Navigation Links */}
+            <div className="hidden md:block">
+              <div className="ml-10 flex items-baseline space-x-8">
+                <a href="#home" className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium">Home</a>
+                <a href="#about" className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium">About Us</a>
+                <a href="#features" className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium">Features</a>
+                <a href="#contact" className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium">Contact Us</a>
+              </div>
             </div>
-          </div>
 
-          {/* Get Started Button */}
-          <div className="hidden md:block">
-            <Link href="/signup" className="animate-item rounded-sm bg-lime-400 px-4 py-2 text-black font-semibold shadow-lg hover:bg-lime-300 transition">
-              Get Started
-            </Link>
-          </div>
+            {/* Get Started Button */}
+            <div className="hidden md:block">
+              <Link
+                href="/signup"
+                className="animate-item rounded-sm bg-lime-400 px-4 py-2 text-black font-semibold shadow-lg hover:bg-lime-300 transition"
+              >
+                Get Started
+              </Link>
+            </div>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden">
-            <button 
-              onClick={toggleMobileMenu}
-              className="text-white hover:text-gray-300 focus:outline-none focus:text-gray-300"
-            >
-              {isMobileMenuOpen ? (
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              )}
-            </button>
-          </div>
+            {/* Mobile menu button */}
+            <div className="md:hidden">
+              <button
+                onClick={toggleMobileMenu}
+                className="text-white hover:text-gray-300 focus:outline-none focus:text-gray-300"
+              >
+                {isMobileMenuOpen ? (
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -135,40 +134,16 @@ const Nav = () => {
       {/* Mobile menu */}
       {isMobileMenuOpen && (
         <div className="md:hidden">
-          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-backddrop-blur-md">
-          <a
-            href="#home"
-            onClick={closeMobileMenu}
-            className="text-white hover:text-gray-300 block px-3 py-2 text-base font-medium"
-          >
-            Home
-          </a>
-          <a
-            href="#about"
-            onClick={closeMobileMenu}
-            className="text-white hover:text-gray-300 block px-3 py-2 text-base font-medium"
-          >
-            About Us
-          </a>
-          <a
-            href="#features"
-            onClick={closeMobileMenu}
-            className="text-white hover:text-gray-300 block px-3 py-2 text-base font-medium"
-          >
-            Features
-          </a>
-          <a
-            href="#contact"
-            onClick={closeMobileMenu}
-            className="text-white hover:text-gray-300 block px-3 py-2 text-base font-medium"
-          >
-            Contact Us
-          </a>
-          <Button onClick={closeMobileMenu} variant="primary" type="button" >
-            Get Started
-          </Button>
+          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-black/80 backdrop-blur-md">
+            <a href="#home" onClick={closeMobileMenu} className="text-white block px-3 py-2 text-base font-medium">Home</a>
+            <a href="#about" onClick={closeMobileMenu} className="text-white block px-3 py-2 text-base font-medium">About Us</a>
+            <a href="#features" onClick={closeMobileMenu} className="text-white block px-3 py-2 text-base font-medium">Features</a>
+            <a href="#contact" onClick={closeMobileMenu} className="text-white block px-3 py-2 text-base font-medium">Contact Us</a>
+            <Button onClick={closeMobileMenu} variant="primary" type="button">
+              Get Started
+            </Button>
+          </div>
         </div>
-      </div>
       )}
     </nav>
   );

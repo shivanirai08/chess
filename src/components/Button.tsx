@@ -17,7 +17,7 @@ export default function Button({onClick, children, type, variant, disabled, clas
                             type={type || "button"}
                             onClick={onClick}
                             disabled={disabled}
-                            className={`w-full ${variant === "primary" ? "bg-primary hover:bg-secondary text-black" : " hover:bg-secondary/20 border border-solid border-white/30 text-white bg-transparent"}  font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-lg ${className} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`} 
+                            className={`w-full ${variant === "primary" ? "bg-primary hover:bg-secondary text-black" : " hover:bg-secondary/20 border border-solid border-white/30 text-white bg-transparent"}  font-semibold md:px-6 md:py-3 px-4 py-2 rounded-lg transition-colors duration-200 shadow-lg ${className} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`} 
                             {...props}
                         >
                             {children}
