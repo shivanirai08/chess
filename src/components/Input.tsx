@@ -22,7 +22,7 @@ const Input: React.FC<InputProps> = ({ id, label, type = "text", ...props }) => 
         htmlFor={id}
         className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-300 text-base transition-all px-1
                peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-md peer-placeholder-shown:text-zinc-300
-               peer-focus:-top-2 peer-focus:-translate-y-0 peer-focus:text-sm peer-focus:text-primary peer-focus:bg-black"
+               peer-focus:-top-2 peer-focus:-translate-y-0 peer-focus:text-sm peer-focus:text-primary peer-focus:bg-black peer-not-placeholder-shown:-top-2 peer-not-placeholder-shown:-translate-y-0 peer-not-placeholder-shown:text-sm peer-not-placeholder-shown:text-zinc-300 peer-not-placeholder-shown:bg-black"
       >
         {label}
       </label>

@@ -62,7 +62,7 @@ export default function MatchmakingStep() {
         <span className="mx-2">or</span>
         <hr className="w-24 border-t border-white/20" />
       </div>
-      <Button variant="secondary" className="w-md">Challenge a Friend</Button>
+      <Button variant="secondary" className="w-full md:w-md">Challenge a Friend</Button>
     </div>
   );
 }
@@ -85,7 +85,7 @@ function RotatingLines() {
   }, []);
 
   return (
-    <div className="h-6 mt-6 flex justify-center items-center overflow-hidden">
+    <div className="h-12 sm:h-6 mt-6 flex justify-center items-center overflow-hidden">
       <AnimatePresence mode="wait">
         <motion.p
           key={lineIndex}

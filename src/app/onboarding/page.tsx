@@ -15,8 +15,14 @@ export default function Onboarding() {
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const [selectedTime, setTime] = useState<string | null>(null);
   const [direction, setDirection] = useState<"left" | "right">("right");
-  const avatars = ["/avatar1.svg", "/avatar2.svg", "/avatar3.svg", "/avatar4.svg", "/avatar5.svg", "/avatar6.svg"];
-
+  const avatars = [
+    "/avatar1.svg",
+    "/avatar2.svg",
+    "/avatar3.svg",
+    "/avatar4.svg",
+    "/avatar5.svg",
+    "/avatar6.svg",
+  ];
 
   // ----- Question Navigation -----
   const next = () => {
@@ -71,7 +77,7 @@ export default function Onboarding() {
       </div>
 
       {/* Question card */}
-      <div className="relative z-10 w-full max-w-2xl flex justify-center items-center px-6">
+      <div className="relative z-10 w-full md:w-2xl flex justify-center items-center px-6">
         <AnimatePresence custom={direction} mode="wait">
           <motion.div
             key={step}
@@ -84,11 +90,11 @@ export default function Onboarding() {
             className="w-full"
           >
             {step === 0 && (
-              <div className="flex flex-col items-center">
-                <p className="text-3xl md:text-4xl font-semibold mb-6">
+              <div className="flex flex-col items-center w-full">
+                <p className="text-3xl md:text-4xl font-semibold mb-6 text-center">
                   What&apos;s your name?
                 </p>
-                <div className="space-y-6 w-md">
+                <div className="space-y-6 w-full md:w-md">
                   <Input
                     label="Your Name"
                     id="name"
@@ -109,19 +115,30 @@ export default function Onboarding() {
             )}
             {step === 1 && (
               <div className="flex flex-col items-center w-full">
-                <p className="text-3xl md:text-4xl font-semibold mb-6">
+                <p className="text-3xl md:text-4xl font-semibold mb-8 text-center">
                   Choose your Avatar
                 </p>
                 <div className="space-y-6 w-full flex flex-col items-center">
-                  <div className="flex gap-4 ">
-                    {avatars.map((avatar,id) => { return ( <Image key={id} src={avatar} width={20} height={20} alt="" className="h-20 w-20 rounded-full bg-gray-800"></Image>)})}
+                  <div className="flex gap-4 flex-wrap justify-center mb-8">
+                    {avatars.map((avatar, id) => {
+                      return (
+                        <Image
+                          key={id}
+                          src={avatar}
+                          width={20}
+                          height={20}
+                          alt=""
+                          className="h-20 w-20 rounded-full bg-gray-800"
+                        ></Image>
+                      );
+                    })}
                   </div>
                   <Button
                     onClick={next}
                     disabled={!name.trim().length}
                     type="submit"
                     variant="primary"
-                    className="w-md"
+                    className="md:w-md w-full"
                   >
                     Next
                   </Button>
@@ -129,37 +146,32 @@ export default function Onboarding() {
               </div>
             )}
             {step === 2 && (
-              <div className="flex flex-col items-center text-center">
+              <div className="flex flex-col items-center text-center px-4">
                 {/* Headline */}
-                <p className="text-3xl md:text-4xl font-semibold mb-2">
-                  Select your Mode
-                </p>
-                <p className="text-gray-400 mb-8 max-w-md">
-                  Choose a mode and then select the time control you’d like to
-                  play with.
+                <p className="text-3xl md:text-4xl font-semibold mb-8">
+                  Choose Your Game Setup
                 </p>
 
                 <div className="space-y-8 w-full max-w-lg">
-                  {/* Step 1: Choose Mode */}
-                  <div>
-                    <p className="text-lg font-medium mb-3">
-                      Step 1: Pick a Mode
+                  <div className="w-full">
+                    <p className="text-sm uppercase tracking-wide text-gray-400 mb-2 text-left">
+                      Mode
                     </p>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                       {["Bullet", "Blitz", "Rapid"].map((mode) => (
                         <button
                           key={mode}
                           onClick={() => {
                             setMode(mode);
                             setSelectedMode(mode);
-                            setTime(""); // reset time when mode changes
+                            setTime("");
                           }}
                           className={`p-4 rounded-xl border font-semibold transition-all 
-                ${
-                  mode === selectedMode
-                    ? "bg-primary text-black shadow-lg border-primary"
-                    : "bg-transparent text-white border-white/30 hover:border-primary hover:bg-primary/10"
-                }`}
+              ${
+                mode === selectedMode
+                  ? "bg-primary/20 shadow-lg border-primary border-2"
+                  : "bg-transparent text-white border-white/30 hover:border-primary hover:bg-primary/5"
+              }`}
                         >
                           {mode}
                         </button>
@@ -167,28 +179,27 @@ export default function Onboarding() {
                     </div>
                   </div>
 
-                  {/* Step 2: Choose Time */}
                   {selectedMode && (
-                    <div>
-                      <p className="text-lg font-medium mb-3">
-                        Step 2: Select Time ({selectedMode})
+                    <div className="w-full">
+                      <p className="text-sm uppercase tracking-wide text-gray-400 mb-2 text-left">
+                        Time ({selectedMode})
                       </p>
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         {(selectedMode === "Bullet"
-                          ? ["1 min", "2|1", "3 min"]
+                          ? ["1 min", "1|1", "2|1"]
                           : selectedMode === "Blitz"
-                          ? ["3|2", "5 min", "5|3"]
+                          ? ["3 min", "3|2", "5 min"]
                           : ["10 min", "15|10", "30 min"]
                         ).map((time) => (
                           <button
                             key={time}
                             onClick={() => setTime(time)}
                             className={`p-4 rounded-xl border font-semibold transition-all
-                  ${
-                    time === selectedTime
-                      ? "bg-secondary text-black shadow-lg border-secondary"
-                      : "bg-transparent text-white border-white/30 hover:border-secondary hover:bg-secondary/10"
-                  }`}
+                ${
+                  time === selectedTime
+                    ? "bg-secondary/20 shadow-lg border-secondary border-2"
+                    : "bg-transparent text-white border-white/30 hover:border-secondary hover:bg-secondary/5"
+                }`}
                           >
                             {time}
                           </button>
@@ -203,7 +214,7 @@ export default function Onboarding() {
                     disabled={!selectedMode || !selectedTime}
                     type="submit"
                     variant="primary"
-                    className="w-full mt-6"
+                    className="w-full mt-6 md:w-md"
                   >
                     Continue
                   </Button>
@@ -211,9 +222,7 @@ export default function Onboarding() {
               </div>
             )}
 
-            {step === 3 && (
-              <MatchmakingStep />
-            )}
+            {step === 3 && <MatchmakingStep />}
           </motion.div>
         </AnimatePresence>
       </div>
