@@ -5,23 +5,37 @@
 type ButtonProps = {
   onClick?: () => void;
   children: React.ReactNode;
+  size?: "small" |"normal";
   type?: "button" | "submit" | "reset";
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "destructive";
   disabled?: boolean;
   className?: string;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>;
 
-export default function Button({onClick, children, type, variant, disabled, className, ...props} : ButtonProps) {
-    return(
-        <button 
-                            type={type || "button"}
-                            onClick={onClick}
-                            disabled={disabled}
-                            className={`w-full ${variant === "primary" ? "bg-primary hover:bg-secondary text-black" : " hover:bg-secondary/20 border border-solid border-white/30 text-white bg-transparent"}  font-semibold md:px-6 md:py-3 px-4 py-2 rounded-lg transition-colors duration-200 shadow-lg ${className} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`} 
-                            {...props}
-                        >
-                            {children}
-                        </button>
-    )
+export default function Button({
+  onClick,
+  children,
+  size,
+  type,
+  variant,
+  disabled,
+  className,
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      type={type || "button"}
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full ${ variant === "primary"
+          ? "bg-primary hover:bg-secondary text-black"
+          : variant === "destructive"
+          ? "bg-destructive hover:bg-destructive/80 text-black"
+          : "border border-2 border-solid border-white/80 text-white bg-transparent"
+      } ${size === "small" ? "text-sm md:px-6 py-1.5 px-4 rounded-sm" : "text-base md:px-6 md:py-3 px-4 py-2 rounded-lg"} ${className} ${disabled ? "opacity-50 cursor-not-allowed" : ""} font-semibold transition-colors duration-200 shadow-lg`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
 }
-

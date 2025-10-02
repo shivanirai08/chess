@@ -104,7 +104,7 @@ const Nav = () => {
             <div className="hidden md:block">
               <Link
                 href="/signup"
-                className="animate-item rounded-sm bg-lime-400 px-4 py-2 text-black font-semibold shadow-lg hover:bg-lime-300 transition"
+                className="animate-item rounded-sm bg-lime-400 px-4 py-2 text-black font-semibold text-sm shadow-lg hover:bg-lime-300 transition"
               >
                 Get Started
               </Link>

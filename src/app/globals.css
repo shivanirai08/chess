@@ -10,6 +10,7 @@
 @theme inline {
   --color-primary: var(--primary);
   --color-secondary: var(--secondary);
+  --color-destructive: var(--destructive);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -22,6 +23,7 @@
     --foreground: #ededed;
     --primary: #D2FE4E;
     --secondary:#8D3AE2;
+    --destructive: #FF4C4C;
 
   }
 }
