@@ -3,12 +3,18 @@
 import Button from "@/components/Button";
 import { useState, useEffect, useRef } from "react";
 import { Chess, Square, PieceSymbol } from "chess.js";
-import { Chessboard, SquareHandlerArgs, defaultPieces, PieceDropHandlerArgs } from "react-chessboard";
+import {
+  Chessboard,
+  SquareHandlerArgs,
+  defaultPieces,
+  PieceDropHandlerArgs,
+} from "react-chessboard";
 import { useUser } from "@/context/UserContext";
 import Image from "next/image";
 
 export default function ChessPage() {
-  const {user} = useUser();
+  const { user } = useUser();
+  const [isDesktop, setIsDesktop] = useState(false);
   const [showAnimations, setShowAnimations] = useState(true);
 
   // Initial game setup
@@ -19,32 +25,34 @@ export default function ChessPage() {
 
   const [chessPosition, setChessPosition] = useState(chessGame.fen());
   const [moveFrom, setMoveFrom] = useState("");
-  const [optionSquares, setOptionSquares] = useState<Record<string, React.CSSProperties>>({});
+  const [optionSquares, setOptionSquares] = useState<
+    Record<string, React.CSSProperties>
+  >({});
   const [boardSize, setBoardSize] = useState(400);
 
   // NEW: Track promotion
-  const [promotionMove, setPromotionMove] = useState<{ from: Square; to: Square; } | null>(null);
+  const [promotionMove, setPromotionMove] = useState<{
+    from: Square;
+    to: Square;
+  } | null>(null);
 
   // resize board dynamically
   useEffect(() => {
     function updateSize() {
       if (typeof window === "undefined") return;
+      setIsDesktop(window.innerWidth >= 1024);
       const height = window.innerHeight - 90;
       const width = window.innerWidth - 40;
 
-      if (window.innerWidth < 1024) {
-        // Mobile / Tablet → use width (full width board on top)
+      if (!isDesktop) {
         setBoardSize(width);
       } else {
-        // Desktop → use min(height, width) to fit beside sidebar
         setBoardSize(Math.min(height, width));
       }
     }
     updateSize();
-    if (typeof window !== "undefined"){
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
-    }
+      window.addEventListener("resize", updateSize);
+      return () => window.removeEventListener("resize", updateSize);
   }, []);
 
   // Highlight available moves
@@ -115,38 +123,50 @@ export default function ChessPage() {
   }
 
   // Handle piece drop (drag-and-drop)
-function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
-  if (!targetSquare) return false;
+  function onPieceDrop({
+    sourceSquare,
+    targetSquare,
+  }: PieceDropHandlerArgs): boolean {
+    if (!targetSquare) return false;
 
+    // get all verbose moves from the source square
+    const moves = chessGame.moves({
+      square: sourceSquare as Square,
+      verbose: true,
+    });
 
-  // get all verbose moves from the source square
-  const moves = chessGame.moves({ square: sourceSquare as Square, verbose: true });
+    // find exact move matching drop target
+    const foundMove = moves.find(
+      (m) => m.from === sourceSquare && m.to === targetSquare
+    );
 
-  // find exact move matching drop target
-  const foundMove = moves.find((m) => m.from === sourceSquare && m.to === targetSquare);
+    if (!foundMove) return false;
 
-  if (!foundMove) return false;     // invalid move => snap back
+    // promotion move (verbose move object provides helper)
+    if (foundMove.isPromotion?.()) {
+      setPromotionMove({
+        from: sourceSquare as Square,
+        to: targetSquare as Square,
+      });
+      // return true to accept the drop visually the actual move will be applied after player picks promotion piece
+      return true;
+    }
 
-  // promotion move (verbose move object provides helper)
-  if (foundMove.isPromotion?.()) {
-    setPromotionMove({ from: sourceSquare as Square, to: targetSquare as Square });
-    // return true to accept the drop visually the actual move will be applied after player picks promotion piece
-    return true;
+    // normal non-promotion move
+    try {
+      chessGame.move({
+        from: sourceSquare as Square,
+        to: targetSquare as Square,
+        promotion: "q",
+      });
+      setChessPosition(chessGame.fen());
+      setMoveFrom("");
+      setOptionSquares({});
+      return true;
+    } catch {
+      return false;
+    }
   }
-
-  // normal non-promotion move: try to make it and update board
-  try {
-    chessGame.move({ from: sourceSquare as Square, to: targetSquare as Square, promotion: "q" });
-    setChessPosition(chessGame.fen());
-    setMoveFrom("");
-    setOptionSquares({});
-    return true;
-  } catch {
-    // illegal for some reason -> snapback
-    return false;
-  }
-}
-
 
   // Handle promotion selection
   function handlePromotion(piece: PieceSymbol) {
@@ -211,7 +231,7 @@ function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): bool
       {/* Main content */}
       <div
         className="flex gap-2 justify-center items-start flex-col lg:flex-row"
-        style={window.innerWidth >= 1024 ? { height: `${boardSize}px` } : {}}
+        style={isDesktop ? { height: `${boardSize}px` } : {}}
       >
         {/* Left: Chessboard */}
         <div className="relative flex justify-center items-center w-full lg:w-auto h-full">
@@ -242,7 +262,13 @@ function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): bool
             <div className="flex justify-between items-center p-3 rounded-lg">
               <div className="flex justify-between items-center gap-4">
                 <div className="flex flex-col items-center gap-2">
-                  <Image src={user.avatar} alt="mee" width={20} height={20} className="rounded-full h-16 w-16" />
+                  <Image
+                    src={user.avatar}
+                    alt="mee"
+                    width={20}
+                    height={20}
+                    className="rounded-full h-16 w-16"
+                  />
                   <span>{user.name}</span>
                 </div>
                 <span className="px-2 py-1 bg-zinc-900 rounded">08:05</span>
@@ -253,7 +279,13 @@ function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): bool
               <div className="flex justify-between items-center gap-4">
                 <span className="px-2 py-1 bg-zinc-900 rounded">08:05</span>
                 <div className="flex flex-col items-center gap-2">
-                  <Image src="/avatar8.svg" alt="opponent"  width={20} height={20} className="rounded-full h-16 w-16"/>
+                  <Image
+                    src="/avatar8.svg"
+                    alt="opponent"
+                    width={20}
+                    height={20}
+                    className="rounded-full h-16 w-16"
+                  />
                   <span>Opponent</span>
                 </div>
               </div>
