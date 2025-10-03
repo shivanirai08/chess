@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Chess Game – Pawns & King Edition
 
-## Getting Started
+Welcome to a **fresh twist on chess**! In this version, the game is simplified to just **pawns and kings**, making strategy sharper and the gameplay faster.  
 
-First, run the development server:
+But don’t be fooled—pawns can still **promote** to powerful pieces like **queen, rook, bishop, or knight**, opening up exciting tactical possibilities!
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Play using **only pawns and kings** on the board.
+- **Pawn promotion**: advance your pawns to transform them into stronger pieces.
+- **Click-to-move or drag-and-drop** piece interaction.
+- **Move history sidebar** with full navigation through past moves.
+- **Responsive design**: works beautifully on desktop and mobile.
+- Simple, clean, and focused gameplay.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tech Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **React** (Next.js)
+- **chess.js** for game logic
+- **react-chessboard** for interactive board rendering
+- **TypeScript** for type safety
+- **Tailwind CSS** for styling
 
-## Learn More
+## Try it Out
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Experience this **new take on chess** here: [Play Chess – Pawns & King](https://chess-xi-ivory.vercel.app/)
