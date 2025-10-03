@@ -44,7 +44,7 @@ export default function ChessPage() {
       const height = window.innerHeight - 90;
       const width = window.innerWidth - 40;
 
-      if (!isDesktop) {
+      if (window.innerWidth <= 1024) {
         setBoardSize(width);
       } else {
         setBoardSize(Math.min(height, width));
