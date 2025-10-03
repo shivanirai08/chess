@@ -3,12 +3,12 @@
 import Button from "@/components/Button";
 import { useState, useEffect, useRef } from "react";
 import { Chess, Square, PieceSymbol } from "chess.js";
-import { Chessboard, SquareHandlerArgs, defaultPieces } from "react-chessboard";
+import { Chessboard, SquareHandlerArgs, defaultPieces, PieceDropHandlerArgs } from "react-chessboard";
 
 export default function ChessPage() {
   const [showAnimations, setShowAnimations] = useState(true);
 
-  // ♟ Initial game setup
+  // Initial game setup
   const chessGameRef = useRef(
     new Chess("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1")
   );
@@ -16,37 +16,32 @@ export default function ChessPage() {
 
   const [chessPosition, setChessPosition] = useState(chessGame.fen());
   const [moveFrom, setMoveFrom] = useState("");
-  const [optionSquares, setOptionSquares] = useState<
-    Record<string, React.CSSProperties>
-  >({});
+  const [optionSquares, setOptionSquares] = useState<Record<string, React.CSSProperties>>({});
   const [boardSize, setBoardSize] = useState(400);
 
   // NEW: Track promotion
-  const [promotionMove, setPromotionMove] = useState<{
-    from: Square;
-    to: Square;
-  } | null>(null);
+  const [promotionMove, setPromotionMove] = useState<{ from: Square; to: Square; } | null>(null);
 
   // resize board dynamically
   useEffect(() => {
-  function updateSize() {
-    const height = window.innerHeight - 90;
-    const width = window.innerWidth - 40;
+    function updateSize() {
+      const height = window.innerHeight - 90;
+      const width = window.innerWidth - 40;
 
-    if (window.innerWidth < 1024) {
-      // Mobile / Tablet → use width (full width board on top)
-      setBoardSize(width);
-    } else {
-      // Desktop → use min(height, width) to fit beside sidebar
-      setBoardSize(Math.min(height, width));
+      if (window.innerWidth < 1024) {
+        // Mobile / Tablet → use width (full width board on top)
+        setBoardSize(width);
+      } else {
+        // Desktop → use min(height, width) to fit beside sidebar
+        setBoardSize(Math.min(height, width));
+      }
     }
-  }
-  updateSize();
-  window.addEventListener("resize", updateSize);
-  return () => window.removeEventListener("resize", updateSize);
-}, []);
+    updateSize();
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
+  }, []);
 
-  // ♟ Highlight available moves
+  // Highlight available moves
   function getMoveOptions(square: Square) {
     const moves = chessGame.moves({ square, verbose: true });
     if (moves.length === 0) {
@@ -71,7 +66,7 @@ export default function ChessPage() {
     return true;
   }
 
-  // ♟ Click-to-move with promotion check
+  // Click-to-move with promotion check
   function onSquareClick({ square, piece }: SquareHandlerArgs) {
     if (!moveFrom && piece) {
       const hasMoveOptions = getMoveOptions(square as Square);
@@ -79,10 +74,11 @@ export default function ChessPage() {
       return;
     }
 
-    const moves = chessGame.moves({ square: moveFrom as Square, verbose: true });
-    const foundMove = moves.find(
-      (m) => m.from === moveFrom && m.to === square
-    );
+    const moves = chessGame.moves({
+      square: moveFrom as Square,
+      verbose: true,
+    });
+    const foundMove = moves.find((m) => m.from === moveFrom && m.to === square);
 
     if (!foundMove) {
       const hasMoveOptions = getMoveOptions(square as Square);
@@ -92,11 +88,11 @@ export default function ChessPage() {
 
     // If it's a promotion move (pawn reaching last rank)
     if (foundMove.isPromotion()) {
-  setPromotionMove({ from: moveFrom as Square, to: square as Square });
-  setMoveFrom("");
-  setOptionSquares({});
-  return;
-}
+      setPromotionMove({ from: moveFrom as Square, to: square as Square });
+      setMoveFrom("");
+      setOptionSquares({});
+      return;
+    }
 
     // Normal move
     try {
@@ -112,7 +108,45 @@ export default function ChessPage() {
     setOptionSquares({});
   }
 
-  // ♟ Handle promotion selection
+  // Handle piece drop (drag-and-drop)
+function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
+  if (!targetSquare) return false;
+
+
+  // get all verbose moves from the source square
+  const moves = chessGame.moves({ square: sourceSquare as Square, verbose: true });
+
+  // find exact move matching drop target
+  const foundMove = moves.find((m) => m.from === sourceSquare && m.to === targetSquare);
+
+  if (!foundMove) return false;     // invalid move => snap back
+
+  // promotion move (verbose move object provides helper)
+  if (foundMove.isPromotion?.()) {
+    // store pending promotion so UI can show dialog
+    setPromotionMove({ from: sourceSquare as Square, to: targetSquare as Square });
+
+    // return true to accept the drop visually (we have not applied the move yet)
+    // the actual move will be applied after player picks promotion piece
+    return true;
+  }
+
+  // normal non-promotion move: try to make it and update board
+  try {
+    chessGame.move({ from: sourceSquare as Square, to: targetSquare as Square, promotion: "q" });
+    setChessPosition(chessGame.fen());
+    // clear UI helpers
+    setMoveFrom("");
+    setOptionSquares({});
+    return true;
+  } catch {
+    // illegal for some reason -> snapback
+    return false;
+  }
+}
+
+
+  // Handle promotion selection
   function handlePromotion(piece: PieceSymbol) {
     if (!promotionMove) return;
     try {
@@ -131,6 +165,7 @@ export default function ChessPage() {
   // ♟ Chessboard options
   const chessboardOptions = {
     position: chessPosition,
+    onPieceDrop,
     onSquareClick,
     squareStyles: optionSquares,
     id: "click-to-move",
@@ -148,7 +183,7 @@ export default function ChessPage() {
   };
 
   return (
-    <div className="h-screen w-full flex flex-col bg-black text-white">
+    <div className="h-full lg:h-screen w-full flex flex-col bg-black text-white">
       {/* Header */}
       <div className="flex justify-between items-center pt-2 pb-1 px-4 border-white/10">
         <h1 className="text-lg font-semibold">Chess</h1>
@@ -172,19 +207,24 @@ export default function ChessPage() {
       </div>
 
       {/* Main content */}
-      <div className={`flex gap-2 justify-center items-start flex-col lg:flex-row h-${boardSize}`}>
+      <div
+        className="flex gap-2 justify-center items-start flex-col lg:flex-row"
+        style={window.innerWidth >= 1024 ? { height: `${boardSize}px` } : {}}
+      >
         {/* Left: Chessboard */}
         <div className="relative flex justify-center items-center w-full lg:w-auto h-full">
           {promotionMove && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-50">
-              <div className="bg-white p-4 rounded shadow-lg flex gap-2">
+              <div className="bg-black/80 backdrop-blur-md p-4 rounded shadow-lg flex gap-2">
                 {(["q", "r", "b", "n"] as PieceSymbol[]).map((p) => (
                   <button
                     key={p}
                     onClick={() => handlePromotion(p)}
-                    className="w-24 h-24 bg-gray-200 hover:bg-gray-300 rounded flex items-center justify-center"
+                    className="w-20 h-20 sm:w-24 sm:h-24 bg-zinc-800 hover:bg-zinc-700 rounded flex items-center justify-center"
                   >
-                    {defaultPieces[`w${p.toUpperCase()}` as keyof typeof defaultPieces]()}
+                    {defaultPieces[
+                      `w${p.toUpperCase()}` as keyof typeof defaultPieces
+                    ]()}
                   </button>
                 ))}
               </div>
@@ -194,22 +234,22 @@ export default function ChessPage() {
         </div>
 
         {/* Right: Sidebar */}
-        <div className="w-full lg:w-1/3 flex flex-col justify-between h-full p-4 lg:pb-6">
+        <div className="w-full lg:w-1/3 flex flex-col justify-between h-full px-4 lg:pb-4">
           <div className="flex flex-col gap-4">
             {/* Player Info */}
-            <div className="flex justify-between items-center p-3 bg-gray-900/40 rounded-lg">
+            <div className="flex justify-between items-center p-3 rounded-lg">
               <div className="flex justify-between items-center gap-4">
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-10 h-10 bg-gray-600 rounded-full" />
                   <span>Your Name</span>
                 </div>
-                <span className="px-2 py-1 bg-gray-800 rounded">08:05</span>
+                <span className="px-2 py-1 bg-zinc-900 rounded">08:05</span>
               </div>
 
               <div className="flex justify-center text-gray-400">vs</div>
 
               <div className="flex justify-between items-center gap-4">
-                <span className="px-2 py-1 bg-gray-800 rounded">08:05</span>
+                <span className="px-2 py-1 bg-zinc-900 rounded">08:05</span>
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-10 h-10 bg-gray-600 rounded-full" />
                   <span>Opponent</span>
@@ -218,7 +258,7 @@ export default function ChessPage() {
             </div>
 
             {/* Moves list */}
-            <div className="max-h-[70%] bg-gray-900/40 rounded-lg p-3 text-sm overflow-auto">
+            <div className="max-h-[70%] bg-zinc-900/40 rounded-lg p-3 text-sm overflow-auto">
               <p className="font-semibold mb-2">Moves</p>
               <table className="w-full text-left">
                 <tbody>
@@ -238,11 +278,11 @@ export default function ChessPage() {
           </div>
 
           {/* Navigation buttons */}
-          <div className="flex justify-center gap-2 mt-4 lg:mt-0">
-            <button className="px-3 py-2 bg-gray-800 rounded-lg">⏮</button>
-            <button className="px-3 py-2 bg-gray-800 rounded-lg">◀</button>
-            <button className="px-3 py-2 bg-gray-800 rounded-lg">▶</button>
-            <button className="px-3 py-2 bg-gray-800 rounded-lg">⏭</button>
+          <div className="flex justify-center gap-2 mt-4 lg:mt-0 sticky bottom-0 py-2">
+            <button className="px-3 py-2 bg-zinc-900 rounded-lg">⏮</button>
+            <button className="px-3 py-2 bg-zinc-900 rounded-lg">◀</button>
+            <button className="px-3 py-2 bg-zinc-900 rounded-lg">▶</button>
+            <button className="px-3 py-2 bg-zinc-900 rounded-lg">⏭</button>
           </div>
         </div>
       </div>
