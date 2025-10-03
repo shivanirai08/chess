@@ -1,17 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import Input from "@/components/Input";
 import Button from "@/components/Button";
 import MatchmakingStep from "@/components/Loadingstep";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useUser } from "@/context/UserContext";
 
 export default function Onboarding() {
+  const router = useRouter();
+  const { setUser } = useUser();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
-  const [mode, setMode] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState("/avatar7.svg");
+  const [matchFound, setMatchFound] = useState(false);
+  const [countdown, setCountdown] = useState(5);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const [selectedTime, setTime] = useState<string | null>(null);
   const [direction, setDirection] = useState<"left" | "right">("right");
@@ -24,8 +30,22 @@ export default function Onboarding() {
     "/avatar6.svg",
   ];
 
-  // ----- Question Navigation -----
+  // Countdown Timer
+  useEffect(() => {
+    if (matchFound && countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+    if (countdown === 0) {
+      router.push("/chess");
+    }
+  }, [matchFound, countdown]);
+
+  // Question Navigation
   const next = () => {
+    if (step == 2){
+      setUser({ name: name || "You", avatar });
+    }
     if (step < 3) {
       setDirection("right");
       setStep(step + 1);
@@ -58,22 +78,27 @@ export default function Onboarding() {
       {/* Dark gradient overlay */}
       <div className="fixed inset-0 bg-gradient-to-b from-black/20 to-black/50 pointer-events-none" />
 
-      {/* Top-right navigation */}
-      <div className="absolute top-6 right-6 flex gap-3 z-20">
-        <button
-          onClick={prev}
-          disabled={step === 0}
-          className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30"
-        >
-          <ArrowLeft />
-        </button>
-        <button
-          onClick={next}
-          disabled={step === 3}
-          className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30"
-        >
-          <ArrowRight />
-        </button>
+      {/* Top bar */}
+      <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl font-bold">Chess</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={prev}
+            disabled={step === 0}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30"
+          >
+            <ArrowLeft />
+          </button>
+          <button
+            onClick={next}
+            disabled={step === 3}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30"
+          >
+            <ArrowRight />
+          </button>
+        </div>
       </div>
 
       {/* Question card */}
@@ -120,15 +145,17 @@ export default function Onboarding() {
                 </p>
                 <div className="space-y-6 w-full flex flex-col items-center">
                   <div className="flex gap-4 flex-wrap justify-center mb-8">
-                    {avatars.map((avatar, id) => {
+                    {avatars.map((avatarImg, id) => {
                       return (
                         <Image
                           key={id}
-                          src={avatar}
+                          src={avatarImg}
                           width={20}
                           height={20}
                           alt=""
-                          className="h-20 w-20 rounded-full bg-gray-800"
+                          className={`h-20 w-20 rounded-full bg-gray-800 cursor-pointer hover:ring-1 hover:ring-primary hover:scale-90 ease-in-out transform transition-all object-cover
+                  ${avatar === avatarImg ? "ring-3 ring-primary" : ""}`}
+                          onClick={() => setAvatar(avatarImg)}
                         ></Image>
                       );
                     })}
@@ -162,7 +189,6 @@ export default function Onboarding() {
                         <button
                           key={mode}
                           onClick={() => {
-                            setMode(mode);
                             setSelectedMode(mode);
                             setTime("");
                           }}
@@ -222,10 +248,50 @@ export default function Onboarding() {
               </div>
             )}
 
-            {step === 3 && <MatchmakingStep />}
+            {step === 3 && (
+              <MatchmakingStep onMatchFound={() => setMatchFound(true)} />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* Player Found */}
+      {matchFound && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm backdrop-filter flex flex-col items-center justify-center z-50">
+          <div className="flex items-center gap-8">
+            {/* You */}
+            <div className="flex flex-col items-center">
+              <Image
+                src={avatar}
+                alt="You"
+                width={80}
+                height={80}
+                className="rounded-full"
+              />
+              <p className="mt-2 text-xl font-semibold">{name || "You"}</p>
+            </div>
+
+            <span className="text-3xl font-bold">VS</span>
+
+            {/* Opponent */}
+            <div className="flex flex-col items-center">
+              <Image
+                src="/avatar8.svg"
+                alt="Opponent"
+                width={80}
+                height={80}
+                className="rounded-full"
+              />
+              <p className="mt-2 text-xl font-semibold">Opponent</p>
+            </div>
+          </div>
+
+          {/* Countdown */}
+          <p className="mt-10 text-4xl font-bold animate-pulse">
+            Match starts in {countdown}...
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import Button from "./Button";
 
 const avatars = ["/avatar1.svg", "/avatar2.svg", "/avatar3.svg", "/avatar4.svg", "/avatar5.svg", "/avatar6.svg", "/avatar7.svg", "/avatar8.svg"];
 
-export default function MatchmakingStep() {
+export default function MatchmakingStep({ onMatchFound }: { onMatchFound: () => void }) {
   const [index, setIndex] = useState(0);
 
   // advance every 2.5s (1s pause + 1.5s slide)
@@ -62,7 +62,7 @@ export default function MatchmakingStep() {
         <span className="mx-2">or</span>
         <hr className="w-24 border-t border-white/20" />
       </div>
-      <Button variant="secondary" className="w-full md:w-md">Challenge a Friend</Button>
+      <Button variant="secondary" className="w-full md:w-md" onClick={()=>{onMatchFound();}}>Challenge a Friend</Button>
     </div>
   );
 }
