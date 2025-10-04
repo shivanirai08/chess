@@ -86,17 +86,17 @@ const Nav = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex-shrink-0">
-            <h1 className="text-2xl font-bold text-white">Only Pawns</h1>
+            <h1 className="text-2xl font-bold text-white">Chess</h1>
           </div>
 
           <div className="flex items-center gap-6">
             {/* Navigation Links */}
             <div className="hidden md:block">
-              <div className="ml-10 flex items-baseline space-x-8">
-                <a href="#home" className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium">Home</a>
-                <a href="#about" className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium">About Us</a>
-                <a href="#features" className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium">Features</a>
-                <a href="#contact" className="text-white hover:text-gray-300 px-3 py-2 text-sm font-medium">Contact Us</a>
+              <div className="ml-10 flex font-gveher font-normal text-md items-baseline space-x-8">
+                <a href="#home" className="text-white hover:text-secondary px-3 py-2">Home</a>
+                <a href="#about" className="text-white hover:text-secondary px-3 py-2">About Us</a>
+                <a href="#features" className="text-white hover:text-secondary px-3 py-2 ">Features</a>
+                <a href="#contact" className="text-white hover:text-secondary px-3 py-2">Contact Us</a>
               </div>
             </div>
 

@@ -22,7 +22,7 @@ export default function MatchmakingStep({ onMatchFound }: { onMatchFound: () => 
 
   return (
     <div className="flex flex-col items-center text-center">
-      <p className="text-3xl md:text-4xl font-semibold mb-10">
+      <p className="text-3xl md:text-4xl font-gveher font-bold mb-10">
         Searching for your next rival...
       </p>
 

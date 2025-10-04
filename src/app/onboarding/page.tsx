@@ -116,8 +116,9 @@ export default function Onboarding() {
           >
             {step === 0 && (
               <div className="flex flex-col items-center w-full">
-                <p className="text-3xl md:text-4xl font-semibold mb-6 text-center">
-                  What&apos;s your name?
+                <p className="text-3xl md:text-4xl font-gveher font-bold mb-6 text-center">
+                  {/* What&apos;s your name? */}
+                  What should we call you ?
                 </p>
                 <div className="space-y-6 w-full md:w-md">
                   <Input
@@ -140,7 +141,7 @@ export default function Onboarding() {
             )}
             {step === 1 && (
               <div className="flex flex-col items-center w-full">
-                <p className="text-3xl md:text-4xl font-semibold mb-8 text-center">
+                <p className="text-3xl md:text-4xl font-gveher font-bold mb-8 text-center">
                   Choose your Avatar
                 </p>
                 <div className="space-y-6 w-full flex flex-col items-center">
@@ -175,7 +176,7 @@ export default function Onboarding() {
             {step === 2 && (
               <div className="flex flex-col items-center text-center px-4">
                 {/* Headline */}
-                <p className="text-3xl md:text-4xl font-semibold mb-8">
+                <p className="text-3xl md:text-4xl font-gveher font-bold mb-8">
                   Choose Your Game Setup
                 </p>
 

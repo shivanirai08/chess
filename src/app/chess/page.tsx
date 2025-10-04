@@ -255,8 +255,8 @@ export default function ChessPage() {
   return (
     <div className="h-full lg:h-screen w-full flex flex-col bg-black text-white">
       {/* Header */}
-      <div className="flex justify-between items-center pt-2 pb-1 px-4 border-white/10">
-        <h1 className="text-lg font-semibold">Chess</h1>
+      <div className="flex justify-between items-center pt-2 pb-3 px-4 border-white/10">
+        <h1 className="text-2xl font-bold">Chess</h1>
         <div className="flex gap-2">
           <Button
             size="small"

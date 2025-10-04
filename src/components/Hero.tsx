@@ -186,18 +186,18 @@ export default function Hero() {
       >
         <div className="w-full">
           <div className="flex flex-col md:flex-row items-start justify-start md:items-center md:justify-center md:mt-16">
-            <h1 className="animate-item text-3xl md:text-4xl font-extrabold text-white text-left md:text-right mb-4 md:mb-0">
+            <h1 className="animate-item font-gveher font-bold text-3xl md:text-5xl font-extrabold text-white text-left md:text-right mb-4 md:mb-0">
               Start with Pawns
             </h1>
 
             {isDesktop && <div className="relative w-[280px] h-[100px]" />}
 
-            <h1 className="animate-item text-3xl md:text-4xl font-extrabold text-white text-left order-3 md:order-2">
+            <h1 className="animate-item font-gveher font-bold text-3xl md:text-5xl font-extrabold text-white text-left order-3 md:order-2">
               End with Power
             </h1>
           </div>
 
-          <p className="animate-item text-lg md:text-xl lg:text-2xl text-white/70 mb-8 max-w-3xl mx-auto md:mt-12 mt-4 text-left md:text-center">
+          <p className="animate-item font-gveher font-normal text-lg md:text-xl lg:text-2xl text-white/70 mb-8 max-w-3xl mx-auto md:mt-12 mt-4 text-left md:text-center">
             A new era of chess: only pawns and kings. Protect, push, and
             promote your way to checkmate — simple to start, thrilling to
             master.
