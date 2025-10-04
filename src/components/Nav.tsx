@@ -137,7 +137,7 @@ const Nav = () => {
             <a href="#about" onClick={closeMobileMenu} className="text-white block px-3 py-2 text-base font-medium">About Us</a>
             <a href="#features" onClick={closeMobileMenu} className="text-white block px-3 py-2 text-base font-medium">Features</a>
             <a href="#contact" onClick={closeMobileMenu} className="text-white block px-3 py-2 text-base font-medium">Contact Us</a>
-            <Button onClick={closeMobileMenu} variant="primary" type="button">
+            <Button onClick={() => {window.location.href = '/signup'}} variant="primary" type="button">
               Get Started
             </Button>
           </div>
