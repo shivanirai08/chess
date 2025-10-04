@@ -102,12 +102,10 @@ const Nav = () => {
 
             {/* Get Started Button */}
             <div className="hidden md:block">
-              <Link
-                href="/signup"
-                className="animate-item rounded-sm bg-lime-400 px-4 py-2 text-black font-semibold text-sm shadow-lg hover:bg-lime-300 transition"
-              >
+              <Button variant="primary" size='small' onClick={() => {window.location.href = '/signup'}}>
                 Get Started
-              </Link>
+              </Button>
+
             </div>
 
             {/* Mobile menu button */}
