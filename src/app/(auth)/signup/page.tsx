@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 
-export default function Page() {
+export default function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -42,17 +42,12 @@ export default function Page() {
     if (!validate()) return;
     // Handle form submission
     try {
-      const res = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/register`, { username, email, password });
-      if (res.status === 201) {
+        await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/register`, { username, email, password });
         toast.success("Account created successfully! Please verify your email.");
-        sessionStorage.setItem("signupEmail", email);
+        // sessionStorage.setItem("signupEmail", email);
         router.push('/verifyotp');
-        // Redirect to sign-in or OTP verification page
-      } else {
-        toast.error("Failed to create account. Please try again.");
-      }
-    } catch (err) {
-      toast.error("Something went wrong. Please try again.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "An error occurred. Please try again.");
     }
   };
 

@@ -6,13 +6,26 @@ import Image from "next/image";
 import Button from "@/components/Button";
 import { toast } from "sonner";
 import axios from "axios";
+import { useRouter } from "next/navigation";
 
-export default function Page() {
-  const email = sessionStorage.getItem("signupEmail");
-  const [otp, setOtp] = useState(["", "", "", ""]);
-  const [loading, setLoading] = useState(false);
-  const [timer, setTimer] = useState(40);
-  const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+export default function OTPpage() {
+    const router = useRouter();
+    const [email, setEmail] = useState<string | null>(null);
+    const [type, setType] = useState<string | null>(null);
+    const [otp, setOtp] = useState(["", "", "", ""]);
+    const [loading, setLoading] = useState(false);
+    const [timer, setTimer] = useState(40);
+    const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+    
+    useEffect(() => {
+        // if (typeof window !== "undefined") {
+        //     setEmail(sessionStorage.getItem("signupEmail"));
+        // }
+        const params = new URLSearchParams(window.location.search);
+        setEmail(params.get("email") || "");
+        setType(params.get("type") || "");
+  }, []);
 
 
   // Timer countdown for resend
@@ -65,14 +78,28 @@ export default function Page() {
       return;
     }
     setLoading(true);
+    // try {
+    //   const res = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/verify-email`, { email, otp: otpValue });
+    //   toast.success("OTP verified!");
+    //   localStorage.setItem("user", JSON.stringify(res.data));
+    //   sessionStorage.removeItem("signupEmail");
+    //   window.location.href = '/onboarding';
+    // } catch {
+    //   toast.error("Invalid OTP. Please try again.");
+    // } finally {
+    //   setLoading(false);
+    // }
+    const apiUrl =
+      type === "signup"
+        ? `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/verify-otp`
+        : `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/verify-reset-otp`;
+
     try {
-      const res = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/verify-email`, { email, otp: otpValue });
+      const res = await axios.post(apiUrl, { email, otp });
       toast.success("OTP verified!");
-      localStorage.setItem("user", JSON.stringify(res.data));
-      sessionStorage.removeItem("signupEmail");
-      window.location.href = '/onboarding';
-    } catch (err) {
-      toast.error("Invalid OTP. Please try again.");
+      router.push(type === "signup" ? "/dashboard" : "/reset-password");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Invalid OTP. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -85,7 +112,7 @@ export default function Page() {
     try {
       await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/resend-otp`, { email });
       toast.success("OTP resent!");
-    } catch (err) {
+    } catch {
       toast.error("Failed to resend OTP. Please try again.");
     }
   };
@@ -133,9 +160,9 @@ export default function Page() {
                 htmlFor="otp"
                 className="block text-white mb-2 font-semibold text-center"
               >
-                Enter the 4-digit OTP sent to your email
+                Enter the 4-digit OTP sent to {email ? `${email}` : ''}
               </label>
-              <div className="flex justify-center gap-4 lg:gap-6">
+              <div className="flex justify-center gap-4 lg:gap-8 mt-4">
                 {otp.map((digit, idx) => (
                   <input
                     key={idx}
@@ -150,13 +177,13 @@ export default function Page() {
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                     onPaste={idx === 0 ? handlePaste : undefined}
-                    className="w-12 h-12 md:w-14 md:h-14 text-2xl md:text-3xl text-center rounded-lg bg-zinc-900 text-white border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-primary tracking-widest"
+                    className="w-12 h-12 md:w-16 md:h-16 text-xl md:text-2xl text-center rounded-lg bg-zinc-900 text-white border border-zinc-700 focus:outline-none focus:ring-1 focus:ring-primary"
                     autoFocus={idx === 0}
                   />
                 ))}
               </div>
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-4">
               <Button
                 type="submit"
                 variant="primary"
@@ -177,12 +204,12 @@ export default function Page() {
             </div>
             <div className="text-center mt-2">
               Back to {` `}
-              <Link
-                href="/signup"
+              {<Link
+                href={type === "signup" ? "/signup" : "/resetpwd"}
                 className="text-primary hover:text-primary hover:underline"
               >
-                SignUp
-              </Link>
+                {type === "signup" ? "SignUp" : "Reset Password"}
+              </Link>}
             </div>
           </form>
         </div>
