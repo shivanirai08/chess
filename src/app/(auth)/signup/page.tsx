@@ -5,30 +5,55 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import Button from "@/components/Button";
+import { toast } from "sonner";
+import axios from "axios";
+import { useRouter } from "next/navigation";
 
 export default function Page() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string; username?: string; terms?: string }>({});
   const [termsAccepted, setTermsAccepted] = useState(false);
-  
+  const router = useRouter();
 
   const validate = () => {
-    const newErrors: typeof errors = {};
-    if (!username.trim()) newErrors.username = "Name is required";
-    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) newErrors.email = "Enter a valid email";
-    if (password.length < 6) newErrors.password = "Password must be at least 6 characters";
-    if (!termsAccepted) newErrors.terms = "You must accept the terms";
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (!username.trim()) {
+      toast.error("Name is required");
+      return false;
+    }
+    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      toast.error("Enter a valid email");
+      return false;
+    }
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return false;
+    }
+    if (!termsAccepted) {
+      toast.error("You must accept the terms");
+      return false;
+    }
+    return true;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
     // Handle form submission
+    try {
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/register`, { username, email, password });
+      if (res.status === 201) {
+        toast.success("Account created successfully! Please verify your email.");
+        sessionStorage.setItem("signupEmail", email);
+        router.push('/verifyotp');
+        // Redirect to sign-in or OTP verification page
+      } else {
+        toast.error("Failed to create account. Please try again.");
+      }
+    } catch (err) {
+      toast.error("Something went wrong. Please try again.");
+    }
   };
 
   return (
@@ -69,11 +94,10 @@ export default function Page() {
             <div>
               <Input
                 id="username"
-                label="Your Name"
+                label="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
-              {errors.username && <p className="text-red-400 text-sm mt-1">{errors.username}</p>}
             </div>
             <div>
               <Input
@@ -83,7 +107,6 @@ export default function Page() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
-              {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
             </div>
             <div className="relative">
               <Input
@@ -114,7 +137,6 @@ export default function Page() {
                   </svg>
                 )}
               </button>
-              {errors.password && <p className="text-red-400 text-sm mt-1">{errors.password}</p>}
             </div>
 
             {/* Terms and Conditions */}
@@ -129,7 +151,6 @@ export default function Page() {
                 Accept Terms & Conditions and respect Privacy.
               </p>
             </div>
-            {errors.terms && <p className="text-red-400 text-sm mt-1">{errors.terms}</p>}
 
             {/* Continue Button */}
             <Button type="submit" variant="primary" disabled={!termsAccepted}>

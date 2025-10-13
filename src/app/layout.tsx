@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Glory } from "next/font/google";
 import "./globals.css";
 import { UserProvider } from "@/context/UserContext";
+import { Toaster } from "sonner";
 
 const glorySans = Glory({
   variable: "--font-glory-sans",
@@ -28,6 +29,7 @@ export default function RootLayout({
       <body
         className={`${glorySans.variable} ${gloryMono.variable} antialiased`}
       >
+        <Toaster position="top-right" richColors />
         <UserProvider>{children}</UserProvider>
       </body>
     </html>
