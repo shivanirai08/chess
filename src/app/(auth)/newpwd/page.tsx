@@ -1,7 +1,7 @@
 "use client"
 
 import Input from "@/components/Input";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import Button from "@/components/Button";
@@ -11,10 +11,17 @@ import { useRouter } from "next/navigation";
 
 export default function ChangePassword() {
     const router = useRouter();
+    const [token, setToken] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+            const params = new URLSearchParams(window.location.search);
+            setToken(params.get("token") || "");
+      }, []);
+    
 
     const validate = () => {
         if (!password) {
@@ -42,11 +49,19 @@ export default function ChangePassword() {
         if (!validate()) return;
         setLoading(true);
         try {
-            const res = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/change-password`, { password });
+            await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/change-password`, { newPassword : password },{
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
             toast.success("Password changed successfully!");
             router.push('/signin');
-        } catch (error : any) {
-            toast.error(error?.response?.data?.message || "Failed to change password. Please try again.");
+        } catch (error: unknown) {
+            if (axios.isAxiosError(error)) {
+                toast.error(error?.response?.data?.message || "Failed to change password. Please try again.");
+            } else {
+                toast.error("Failed to change password. Please try again.");
+            }
         } finally {
             setLoading(false);
         }
@@ -114,7 +129,7 @@ export default function ChangePassword() {
                         </div>
                         <div className="relative">
                             <Input
-                                id="password"
+                                id="confirm-password"
                                 type={showPassword ? "text" : "password"}
                                 label="Confirm Password"
                                 value={confirmPassword}

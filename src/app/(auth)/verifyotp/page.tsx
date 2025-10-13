@@ -19,9 +19,6 @@ export default function OTPpage() {
 
     
     useEffect(() => {
-        // if (typeof window !== "undefined") {
-        //     setEmail(sessionStorage.getItem("signupEmail"));
-        // }
         const params = new URLSearchParams(window.location.search);
         setEmail(params.get("email") || "");
         setType(params.get("type") || "");
@@ -78,28 +75,26 @@ export default function OTPpage() {
       return;
     }
     setLoading(true);
-    // try {
-    //   const res = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/verify-email`, { email, otp: otpValue });
-    //   toast.success("OTP verified!");
-    //   localStorage.setItem("user", JSON.stringify(res.data));
-    //   sessionStorage.removeItem("signupEmail");
-    //   window.location.href = '/onboarding';
-    // } catch {
-    //   toast.error("Invalid OTP. Please try again.");
-    // } finally {
-    //   setLoading(false);
-    // }
     const apiUrl =
       type === "signup"
-        ? `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/verify-otp`
+        ? `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/verify-email`
         : `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/verify-reset-otp`;
 
     try {
-      const res = await axios.post(apiUrl, { email, otp });
+      const res = await axios.post(apiUrl, { email, otp: otpValue });
       toast.success("OTP verified!");
-      router.push(type === "signup" ? "/dashboard" : "/reset-password");
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "Invalid OTP. Please try again.");
+      const token = res.data.forgotPasswordAccessToken;
+      router.push(
+        type === "signup"
+          ? "/onboarding"
+          : `/newpwd?token=${encodeURIComponent(token)}`
+      );
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+          toast.error(error?.response?.data?.message || "Invalid OTP. Please try again.");
+      } else {
+          toast.error("Invalid OTP. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -112,8 +107,12 @@ export default function OTPpage() {
     try {
       await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/resend-otp`, { email });
       toast.success("OTP resent!");
-    } catch {
-      toast.error("Failed to resend OTP. Please try again.");
+    } catch (error: unknown) {
+            if (axios.isAxiosError(error)) {
+                toast.error(error?.response?.data?.message || "Failed to change password. Please try again.");
+            } else {
+                toast.error("Failed to change password. Please try again.");
+            }
     }
   };
 

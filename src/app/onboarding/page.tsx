@@ -39,7 +39,7 @@ export default function Onboarding() {
     if (countdown === 0) {
       router.push("/chess");
     }
-  }, [matchFound, countdown]);
+  }, [matchFound, countdown, router]);
 
   // Question Navigation
   const next = () => {

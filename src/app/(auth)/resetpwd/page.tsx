@@ -49,8 +49,12 @@ export default function ForgotPassword() {
             } else {
                 toast.error("Invalid credentials.");
             }
-        } catch {
-            toast.error("Failed to sign in. Please check your credentials.");
+        } catch (error: unknown) {
+            if (axios.isAxiosError(error)) {
+                toast.error(error?.response?.data?.message || "Failed to change password. Please try again.");
+            } else {
+                toast.error("Failed to change password. Please try again.");
+            }
         } finally {
             setLoading(false);
             setHasSentOnce(true);

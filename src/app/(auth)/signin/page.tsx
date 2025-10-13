@@ -55,8 +55,12 @@ export default function SignIn() {
                     localStorage.removeItem("user");
                 }
                 router.push('/onboarding');
-        } catch (error : any) {
-            toast.error(error?.response?.data?.message || "Failed to sign in. Please check your credentials.");
+        } catch (error: unknown) {
+            if (axios.isAxiosError(error)) {
+                toast.error(error?.response?.data?.message || "Failed to change password. Please try again.");
+            } else {
+                toast.error("Failed to change password. Please try again.");
+            }
         } finally {
             setLoading(false);
         }

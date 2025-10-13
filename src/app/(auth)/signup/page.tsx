@@ -40,14 +40,16 @@ export default function SignUp() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    // Handle form submission
     try {
         await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/register`, { username, email, password });
         toast.success("Account created successfully! Please verify your email.");
-        // sessionStorage.setItem("signupEmail", email);
-        router.push('/verifyotp');
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "An error occurred. Please try again.");
+        router.push(`/verifyotp?type=signup&email=${email}`);
+    } catch (error: unknown) {
+            if (axios.isAxiosError(error)) {
+                toast.error(error?.response?.data?.message || "Failed to change password. Please try again.");
+            } else {
+                toast.error("Failed to change password. Please try again.");
+            }
     }
   };
 
