@@ -17,6 +17,11 @@ export default function ForgotPassword() {
     const [hasSentOnce, setHasSentOnce] = useState(false);
 
     useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        setEmail(params.get("email") || "");
+    }, []);
+
+    useEffect(() => {
         if (timer === 0) return;
         const interval = setInterval(() => setTimer((t) => t - 1), 1000);
         return () => clearInterval(interval);
@@ -112,7 +117,7 @@ export default function ForgotPassword() {
                         {/* Sign Up Link */}
                         <p className="text-white text-center">
                             Remember your password?{" "}
-                            <Link href="/signin" className="text-primary hover:text-primary hover:underline">
+                            <Link href={`/login?email=${email}`} className="text-primary hover:text-primary hover:underline">
                                 Sign in
                             </Link>
                         </p>

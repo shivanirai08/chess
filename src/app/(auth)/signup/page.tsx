@@ -1,21 +1,27 @@
 "use client";
 
 import Input from "@/components/Input";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import Button from "@/components/Button";
 import { toast } from "sonner";
 import axios from "axios";
 import { useRouter } from "next/navigation";
+import { Check, Eye, EyeOff, X } from "lucide-react";
 
 export default function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [focused, setFocused] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setEmail(params.get("email") || "");
+  }, []);
 
   const validate = () => {
     if (!username.trim()) {
@@ -26,12 +32,12 @@ export default function SignUp() {
       toast.error("Enter a valid email");
       return false;
     }
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    if (!password) {
+      toast.error("Password is required");
       return false;
     }
-    if (!termsAccepted) {
-      toast.error("You must accept the terms");
+    if (Object.values(rules.map((rule) => rule.valid)).includes(false)) {
+      toast.error("Password does not meet all requirements.");
       return false;
     }
     return true;
@@ -41,17 +47,44 @@ export default function SignUp() {
     e.preventDefault();
     if (!validate()) return;
     try {
-        await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/register`, { username, email, password });
-        toast.success("Account created successfully! Please verify your email.");
-        router.push(`/verifyotp?type=signup&email=${email}`);
+      await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/register`, {
+        username,
+        email,
+        password,
+      });
+      toast.success("Account created successfully! Please verify your email.");
+      router.push(`/verifyotp?type=signup&email=${email}`);
     } catch (error: unknown) {
-            if (axios.isAxiosError(error)) {
-                toast.error(error?.response?.data?.message || "Failed to change password. Please try again.");
-            } else {
-                toast.error("Failed to change password. Please try again.");
-            }
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error?.response?.data?.message ||
+            "Failed to change password. Please try again."
+        );
+      } else {
+        toast.error("Failed to change password. Please try again.");
+      }
     }
   };
+
+  // Password requirements
+  const rules = [
+    {
+      label: "At least 6 characters",
+      valid: password.length >= 6,
+    },
+    {
+      label: "one number",
+      valid: /\d/.test(password),
+    },
+    {
+      label: "one letter",
+      valid: /[A-Za-z]/.test(password),
+    },
+    {
+      label: "one special character",
+      valid: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+    },
+  ];
 
   return (
     <div
@@ -62,7 +95,10 @@ export default function SignUp() {
 
       {/* Chess Logo */}
       <div className="absolute top-6 left-6 z-16">
-        <Link href="/" className="text-2xl font-bold text-white hover:text-gray-300 transition-colors cursor-pointer">
+        <Link
+          href="/"
+          className="text-2xl font-bold text-white hover:text-gray-300 transition-colors cursor-pointer"
+        >
           Chess
         </Link>
       </div>
@@ -83,11 +119,11 @@ export default function SignUp() {
         <div className="w-full max-w-md">
           {/* Sign Up Title */}
           <h1 className="text-3xl md:text-4xl font-gveher font-bold text-white text-center mb-4 md:mb-8">
-            Sign Up
+            Create an Account
           </h1>
 
           {/* Sign Up Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Input
                 id="username"
@@ -105,12 +141,15 @@ export default function SignUp() {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            <div className="relative">
+            <div className="space-y-2">
+              <div className="relative">
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
                 label="Password"
                 value={password}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
                 onChange={(e) => setPassword(e.target.value)}
               />
               <button
@@ -120,37 +159,35 @@ export default function SignUp() {
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? (
-                  // Eye open SVG
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                ) : (
-                  // Eye closed SVG
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.477 0-8.268-2.943-9.542-7a9.956 9.956 0 012.442-4.362M6.634 6.634A9.956 9.956 0 0112 5c4.477 0 8.268 2.943 9.542 7a9.956 9.956 0 01-4.362 5.568M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
-                  </svg>
-                )}
+                {showPassword ? <Eye /> : <EyeOff />}
               </button>
             </div>
 
-            {/* Terms and Conditions */}
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                className="mr-2 size-4 cursor-pointer accent-primary focus:ring-transparent"
-                checked={termsAccepted}
-                onChange={(e) => setTermsAccepted(e.target.checked)}
-              />
-              <p className="text-zinc-200">
-                Accept Terms & Conditions and respect Privacy.
-              </p>
+            {/* Password Requirements */}
+            <div
+              className={`transition-all duration-300 text-sm text-gray-200 ${
+                focused
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-2"
+              }`}
+            >
+              <div className="px-2 grid grid-cols-2 gap-x-4">
+                {rules.map((rule, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    {rule.valid ? (
+                      <Check className="text-green-400 w-4 h-4" />
+                    ) : (
+                      <X className="text-gray-400 w-4 h-4" />
+                    )}
+                    <span>{rule.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
             </div>
 
             {/* Continue Button */}
-            <Button type="submit" variant="primary" disabled={!termsAccepted}>
+            <Button type="submit" variant="primary" disabled={!validate}>
               Continue
             </Button>
 
@@ -158,14 +195,26 @@ export default function SignUp() {
             <p className="text-white text-center">
               Already have an account?{" "}
               <Link
-                href="/signin"
+                href={`/login?email=${email}`}
                 className="text-primary hover:text-lime-300 hover:underline"
               >
-                Sign in
+                Log In
               </Link>
             </p>
           </form>
         </div>
+        {/* Footer Disclaimer
+        <p className="text-gray-300 text-xs text-center mt-8">
+          By signing up, you agree to our{" "}
+          <Link href="/terms" className="text-primary hover:underline">
+            Terms & Conditions
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="text-primary hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p> */}
       </div>
     </div>
   );

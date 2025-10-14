@@ -1,21 +1,27 @@
 "use client"
 
 import Input from "@/components/Input";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import Button from "@/components/Button";
 import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 
-export default function SignIn() {
+export default function LogIn() {
     const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [rememberMe, setRememberMe] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+              const params = new URLSearchParams(window.location.search);
+              setEmail(params.get("email") || "");
+    }, []);
 
     const validate = () => {
         if (!email.trim()) {
@@ -87,12 +93,12 @@ export default function SignIn() {
             {/* Main Content */}
             <div className="relative z-10 flex items-center justify-center h-full px-4">
                 <div className="w-full max-w-md">
-                    {/* Sign In Title */}
+                    {/* Log In Title */}
                     <h1 className="text-3xl md:text-4xl font-gveher font-bold text-white text-center mb-4 md:mb-8">
-                        Sign In
+                        Log In
                     </h1>
 
-                    {/* Sign In Form */}
+                    {/* Log In Form */}
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <Input
                             id="email"
@@ -119,19 +125,7 @@ export default function SignIn() {
                                 aria-label={showPassword ? "Hide password" : "Show password"}
                                 disabled={loading}
                             >
-                                {showPassword ? (
-                                    // Eye open SVG
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                    </svg>
-                                ) : (
-                                    // Eye closed SVG
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.477 0-8.268-2.943-9.542-7a9.956 9.956 0 012.442-4.362M6.634 6.634A9.956 9.956 0 0112 5c4.477 0 8.268 2.943 9.542 7a9.956 9.956 0 01-4.362 5.568M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
-                                    </svg>
-                                )}
+                                {showPassword ? ( <Eye /> ) : ( <EyeOff /> )}
                             </button>
                         </div>
 
@@ -150,7 +144,7 @@ export default function SignIn() {
                                     Remember Me
                                 </label>
                             </div>
-                            <Link href="/resetpwd" className="text-white hover:text-primary hover:underline">
+                            <Link href={`/resetpwd?email=${email}`} className="text-white hover:text-primary hover:underline">
                                 Forgot password ?
                             </Link>
                         </div>
@@ -163,8 +157,8 @@ export default function SignIn() {
                         {/* Sign Up Link */}
                         <p className="text-white text-center">
                             Don&apos;t have an account?{" "}
-                            <Link href="/signup" className="text-primary hover:text-primary hover:underline">
-                                Sign up
+                            <Link href={`/signup?email=${email}`} className="text-primary hover:text-primary hover:underline">
+                                Create one
                             </Link>
                         </p>
                     </form>

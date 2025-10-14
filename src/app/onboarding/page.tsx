@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import Input from "@/components/Input";
 import Button from "@/components/Button";
-import MatchmakingStep from "@/components/Loadingstep";
+import MatchmakingStep from "@/components/Matchmakingstep";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/context/UserContext";
