@@ -1,10 +1,10 @@
 "use client";
 
-import Input from "@/components/Input";
+import Input from "@/components/ui/Input";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import Button from "@/components/Button";
+import Button from "@/components/ui/Button";
 import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -81,11 +81,7 @@ export default function ChangePassword() {
   };
 
   return (
-    <div
-      className="relative bg-fixed bg-cover bg-center bg-no-repeat h-screen overflow-hidden"
-      style={{ backgroundImage: "url('/bg.svg')" }}
-    >
-      <div className="fixed inset-0 bg-gradient-to-b from-black/30 to-black/50 pointer-events-none" />
+    <div className="relative h-screen overflow-hidden">
 
       {/* Chess Logo */}
       <div className="absolute top-6 left-6 z-16">

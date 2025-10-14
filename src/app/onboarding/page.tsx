@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import Input from "@/components/Input";
-import Button from "@/components/Button";
-import MatchmakingStep from "@/components/Matchmakingstep";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import MatchmakingStep from "@/components/layout/Matchmakingstep";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/context/UserContext";
@@ -72,11 +72,7 @@ export default function Onboarding() {
 
   return (
     <div
-      className="relative min-h-screen bg-fixed bg-cover bg-center bg-no-repeat text-white flex flex-col items-center justify-center overflow-hidden"
-      style={{ backgroundImage: "url('/bg.svg')" }}
-    >
-      {/* Dark gradient overlay */}
-      <div className="fixed inset-0 bg-gradient-to-b from-black/20 to-black/50 pointer-events-none" />
+      className="relative h-screen flex flex-col items-center justify-center overflow-hidden">
 
       {/* Top bar */}
       <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">

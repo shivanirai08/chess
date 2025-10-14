@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
-import Button from "./Button";
+import Button from "@/components/ui/Button";
 
 const avatars = ["/avatar1.svg", "/avatar2.svg", "/avatar3.svg", "/avatar4.svg", "/avatar5.svg", "/avatar6.svg", "/avatar7.svg", "/avatar8.svg"];
 

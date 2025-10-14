@@ -1,6 +1,6 @@
 "use client";
 
-import Button from "@/components/Button";
+import Button from "@/components/ui/Button";
 import { useState, useEffect, useRef } from "react";
 import { Chess, Square, PieceSymbol } from "chess.js";
 import {
@@ -253,7 +253,7 @@ export default function ChessPage() {
   };
 
   return (
-    <div className="h-full lg:h-screen w-full flex flex-col bg-black text-white">
+    <div className="h-full lg:h-screen w-full flex flex-col">
       {/* Header */}
       <div className="flex justify-between items-center pt-2 pb-3 px-4 border-white/10">
         <h1 className="text-2xl font-bold">Chess</h1>
