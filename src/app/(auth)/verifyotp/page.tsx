@@ -9,21 +9,20 @@ import axios from "axios";
 import { useRouter } from "next/navigation";
 
 export default function OTPpage() {
-    const router = useRouter();
-    const [email, setEmail] = useState<string | null>(null);
-    const [type, setType] = useState<string | null>(null);
-    const [otp, setOtp] = useState(["", "", "", ""]);
-    const [loading, setLoading] = useState(false);
-    const [timer, setTimer] = useState(40);
-    const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const router = useRouter();
+  const [email, setEmail] = useState<string | null>(null);
+  const [type, setType] = useState<string | null>(null);
+  const [otp, setOtp] = useState(["", "", "", ""]);
+  const [loading, setLoading] = useState(false);
+  const [timer, setTimer] = useState(40);
+  const [status, setStatus] = useState<"idle" | "error" | "success">("idle");
+  const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
-    
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        setEmail(params.get("email") || "");
-        setType(params.get("type") || "");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setEmail(params.get("email") || "");
+    setType(params.get("type") || "");
   }, []);
-
 
   // Timer countdown for resend
   useEffect(() => {
@@ -38,6 +37,7 @@ export default function OTPpage() {
     const newOtp = [...otp];
     newOtp[idx] = value;
     setOtp(newOtp);
+    setStatus("idle");
 
     if (value && idx < 3) {
       inputRefs.current[idx + 1]?.focus();
@@ -58,12 +58,10 @@ export default function OTPpage() {
 
   // Handle paste
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const pasted = e.clipboardData
-      .getData("text")
-      .replace(/\D/g, "")
-      .slice(0, 4);
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
     const newOtp = pasted.split("").map((val, idx) => (idx < 4 ? val : ""));
     setOtp(newOtp);
+    setStatus("idle");
     inputRefs.current[3]?.focus();
   };
 
@@ -72,6 +70,7 @@ export default function OTPpage() {
     const otpValue = otp.join("");
     if (otpValue.length !== 4 || !/^\d{4}$/.test(otpValue)) {
       toast.error("Please enter a valid 4-digit OTP.");
+      setStatus("error");
       return;
     }
     setLoading(true);
@@ -83,17 +82,25 @@ export default function OTPpage() {
     try {
       const res = await axios.post(apiUrl, { email, otp: otpValue });
       toast.success("OTP verified!");
-      const token = res.data.forgotPasswordAccessToken;
-      router.push(
-        type === "signup"
-          ? "/onboarding"
-          : `/newpwd?token=${encodeURIComponent(token)}`
-      );
+      setStatus("success");
+
+      // Small delay to show success UI before redirect
+      setTimeout(() => {
+        const token = res.data.forgotPasswordAccessToken;
+        router.push(
+          type === "signup"
+            ? "/onboarding"
+            : `/newpwd?token=${encodeURIComponent(token)}`
+        );
+      }, 600);
     } catch (error: unknown) {
+      setStatus("error");
       if (axios.isAxiosError(error)) {
-          toast.error(error?.response?.data?.message || "Invalid OTP. Please try again.");
+        toast.error(
+          error?.response?.data?.message || "Invalid OTP. Please try again."
+        );
       } else {
-          toast.error("Invalid OTP. Please try again.");
+        toast.error("Invalid OTP. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -103,16 +110,18 @@ export default function OTPpage() {
   const handleResend = async () => {
     if (timer > 0) return;
     setTimer(40);
+    setStatus("idle");
     toast.success("OTP resent!");
     try {
       await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/resend-otp`, { email });
-      toast.success("OTP resent!");
     } catch (error: unknown) {
-            if (axios.isAxiosError(error)) {
-                toast.error(error?.response?.data?.message || "Failed to change password. Please try again.");
-            } else {
-                toast.error("Failed to change password. Please try again.");
-            }
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error?.response?.data?.message || "Failed to resend OTP. Please try again."
+        );
+      } else {
+        toast.error("Failed to resend OTP. Please try again.");
+      }
     }
   };
 
@@ -123,7 +132,7 @@ export default function OTPpage() {
     >
       <div className="fixed inset-0 bg-gradient-to-b from-black/30 to-black/50 pointer-events-none" />
 
-      {/* Chess Logo */}
+      {/* Logo */}
       <div className="absolute top-6 left-6 z-16">
         <Link
           href="/"
@@ -133,7 +142,7 @@ export default function OTPpage() {
         </Link>
       </div>
 
-      {/* Image Overlay */}
+      {/* Background Image */}
       <div className="absolute -bottom-20 -right-30 md:w-150 md:h-150 w-100 h-100 opacity-30 lg:opacity-50 pointer-events-none z-10">
         <Image
           src="/auth.svg"
@@ -147,19 +156,17 @@ export default function OTPpage() {
       {/* Main Content */}
       <div className="relative z-10 flex items-center justify-center h-full px-4">
         <div className="w-full max-w-md">
-          {/* Verify OTP Title */}
           <h1 className="text-3xl md:text-4xl font-gveher font-bold text-white text-center mb-4 md:mb-8">
             Verify OTP
           </h1>
 
-          {/* OTP Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label
                 htmlFor="otp"
                 className="block text-white mb-2 font-semibold text-center"
               >
-                Enter the 4-digit OTP sent to {email ? `${email}` : ''}
+                Enter the 4-digit OTP sent to {email ? `${email}` : ""}
               </label>
               <div className="flex justify-center gap-4 lg:gap-8 mt-4">
                 {otp.map((digit, idx) => (
@@ -176,12 +183,19 @@ export default function OTPpage() {
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                     onPaste={idx === 0 ? handlePaste : undefined}
-                    className="w-12 h-12 md:w-16 md:h-16 text-xl md:text-2xl text-center rounded-lg bg-zinc-900 text-white border border-zinc-700 focus:outline-none focus:ring-1 focus:ring-primary"
+                    aria-invalid={status === "error"}
+                    className={`w-12 h-12 md:w-16 md:h-16 text-xl md:text-2xl text-center rounded-lg bg-zinc-900 text-white border transition-all duration-200 
+                      ${status === "error"
+                        ? "border-red-500 ring-1 ring-red-500 animate-shake"
+                        : status === "success"
+                        ? "border-green-500 ring-1 ring-green-500"
+                        : "border-zinc-700 focus:ring-1 focus:ring-primary"}`}
                     autoFocus={idx === 0}
                   />
                 ))}
               </div>
             </div>
+
             <div className="flex flex-col gap-4">
               <Button
                 type="submit"
@@ -201,14 +215,15 @@ export default function OTPpage() {
                 {timer > 0 ? `Resend OTP in ${timer}s` : "Resend OTP"}
               </Button>
             </div>
-            <div className="text-center mt-2">
-              Back to {` `}
-              {<Link
+
+            <div className="text-center mt-2 text-white">
+              Back to{" "}
+              <Link
                 href={type === "signup" ? "/signup" : "/resetpwd"}
                 className="text-primary hover:text-primary hover:underline"
               >
-                {type === "signup" ? "SignUp" : "Reset Password"}
-              </Link>}
+                {type === "signup" ? "Sign Up" : "Reset Password"}
+              </Link>
             </div>
           </form>
         </div>
