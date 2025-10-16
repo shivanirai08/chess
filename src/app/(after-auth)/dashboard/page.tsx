@@ -10,13 +10,16 @@ export default function Dashboard() {
   const router = useRouter();
 
   const handleLogout = () => {
+    localStorage.removeItem("user");
     localStorage.removeItem("token");
-    toast.success("Logged out successfully");
-    router.push("/signin");
+    sessionStorage.removeItem("user");
+    sessionStorage.removeItem("token");
+    toast.success("Logged out successfully!");
+    router.push("/login");
   };
 
   return (
-    <>
+    <div className="relative min-h-screen overflow-hidden">
       {/* Header */}
       <header className="relative z-10 flex items-center justify-between px-8 py-6">
         <Link
@@ -55,17 +58,17 @@ export default function Dashboard() {
           <DashboardCard
             title="Leaderboard"
             icon={<Trophy className="w-6 h-6" />}
-            onClick={() => router.push("/leaderboard")}
+            onClick={() => router.push("/play")}
           />
           <DashboardCard
             title="Friends"
             icon={<Users className="w-6 h-6" />}
-            onClick={() => router.push("/friends")}
+            onClick={() => router.push("/play")}
           />
           <DashboardCard
             title="Settings"
             icon={<Settings className="w-6 h-6" />}
-            onClick={() => router.push("/settings")}
+            onClick={() => router.push("/play")}
           />
         </div>
       </main>
@@ -80,7 +83,7 @@ export default function Dashboard() {
           className="w-full h-full object-contain"
         />
       </div>
-    </>
+    </div>
   );
 }
 

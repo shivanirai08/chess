@@ -87,6 +87,8 @@ export default function OTPpage() {
       // Small delay to show success UI before redirect
       setTimeout(() => {
         const token = res.data.forgotPasswordAccessToken;
+        {type === "signup" && localStorage.setItem("user", JSON.stringify(res.data.user));
+          localStorage.setItem("token", JSON.stringify(res.data.token))}
         router.push(
           type === "signup"
             ? "/dashboard"

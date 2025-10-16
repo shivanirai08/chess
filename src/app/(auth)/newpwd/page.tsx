@@ -65,7 +65,7 @@ export default function ChangePassword() {
         }
       );
       toast.success("Password changed successfully!");
-      router.push("/signin");
+      router.push("/login");
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         toast.error(

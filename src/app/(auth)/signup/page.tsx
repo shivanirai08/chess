@@ -30,33 +30,45 @@ export default function SignUp() {
     setEmail(params.get("email") || "");
   }, []);
 
-  const rules = [
-    { label: "At least 6 characters", valid: password.length >= 6 },
-    { label: "one number", valid: /\d/.test(password) },
-    { label: "one letter", valid: /[A-Za-z]/.test(password) },
-    {
-      label: "one special character",
-      valid: /[!@#$%^&*(),.?\":{}|<>]/.test(password),
-    },
-  ];
+const rules = [
+  { label: "At least 6 characters", valid: password.length >= 6 },
+  { label: "One number", valid: /\d/.test(password) },
+  { label: "One letter", valid: /[A-Za-z]/.test(password) },
+  {
+    label: "One special character",
+    valid: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+  },
+];
 
-  const validate = () => {
-    const newErrors = {
-      username: !username.trim() || username.length < 20,
-      email: !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/),
-      password:
-        !password ||
-        Object.values(rules.map((rule) => rule.valid)).includes(false),
-    };
-    setErrors(newErrors);
-
-    if (newErrors.username) toast.error("Username cannot be empty or have more than 20 characters");
-    else if (newErrors.email) toast.error("Enter a valid email");
-    else if (newErrors.password)
-      toast.error("Password does not meet requirements");
-
-    return !Object.values(newErrors).includes(true);
+const validate = () => {
+  const usernameValid = /^[A-Za-z0-9_]+$/.test(username);
+  const newErrors = {
+    username:
+      !username.trim() ||
+      username.length > 20 ||
+      !usernameValid,
+    email: !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/),
+    password:
+      !password ||
+      Object.values(rules.map((rule) => rule.valid)).includes(false),
   };
+
+  if (newErrors.username) {
+    if (!username.trim()) toast.error("Username cannot be empty");
+    else if (username.length > 20)
+      toast.error("Username cannot exceed 20 characters");
+    else if (!usernameValid)
+      toast.error("Username can only contain letters, numbers, and underscores");
+  } else if (newErrors.email) {
+    toast.error("Enter a valid email");
+  } else if (newErrors.password) {
+    toast.error("Password does not meet requirements");
+  }
+
+  setErrors(newErrors);
+  return !Object.values(newErrors).includes(true);
+};
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

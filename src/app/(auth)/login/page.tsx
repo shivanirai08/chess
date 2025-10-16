@@ -70,14 +70,19 @@ export default function LogIn() {
       );
 
       toast.success("Signed in successfully!");
-      const userData = JSON.stringify(res.data);
-
+      const userData = JSON.stringify(res.data.user);
+      const token = JSON.stringify(res.data.token);
+      
       if (rememberMe) {
         localStorage.setItem("user", userData);
+        localStorage.setItem("token", token);
         sessionStorage.removeItem("user");
+        sessionStorage.removeItem("token");
       } else {
         sessionStorage.setItem("user", userData);
+        sessionStorage.setItem("token", token);
         localStorage.removeItem("user");
+        localStorage.removeItem("token");
       }
 
       router.push("/dashboard");
