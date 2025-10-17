@@ -5,6 +5,7 @@ import { UserProvider } from "@/context/UserContext";
 import { Toaster } from "sonner";
 // import Loader from "@/components/Loader";
 
+
 const glorySans = Glory({
   variable: "--font-glory-sans",
   subsets: ["latin"],

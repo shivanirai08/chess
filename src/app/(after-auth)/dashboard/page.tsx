@@ -10,12 +10,17 @@ export default function Dashboard() {
   const router = useRouter();
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
+    try {
     localStorage.removeItem("token");
-    sessionStorage.removeItem("user");
+    localStorage.removeItem("user");
     sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
+
+  } catch (err) {
+    console.error("Failed to clear auth data", err);
+  }
     toast.success("Logged out successfully!");
-    router.push("/login");
+    setTimeout(() => router.push("/login"), 300);
   };
 
   return (

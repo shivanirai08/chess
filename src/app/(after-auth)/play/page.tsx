@@ -1,5 +1,6 @@
 "use client";
 
+import { io, Socket } from "socket.io-client";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
@@ -7,7 +8,6 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import GameSetup from "@/components/layout/GameSetup";
 import MatchmakingStep from "@/components/layout/Matchmakingstep";
-import Button from "@/components/ui/Button";
 import { toast } from "sonner";
 
 export default function PlayPage() {
@@ -18,16 +18,153 @@ export default function PlayPage() {
   const [countdown, setCountdown] = useState(5);
   const [gameId, setGameId] = useState<string | null>(null);
   const [loadingMatch, setLoadingMatch] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
 
+  // Get token from local storage or sessionStorage
+  const getToken = () => {
+    if (typeof window === "undefined") return null;
+    
+    const localUser = localStorage.getItem("token");
+    const sessionUser = sessionStorage.getItem("token");
+
+    try {
+      if (localUser) {
+        const userData = JSON.parse(localUser);
+        return userData || null;
+      } else if (sessionUser) {
+        const userData = JSON.parse(sessionUser);
+        return userData || null;
+      }
+      return null;
+    } catch (e) {
+      console.error("Error parsing user data:", e);
+      return null;
+    }
+  };
+
+  // Create socket connection when matchmaking starts
+  useEffect(() => {
+      const token = getToken();
+
+      if (!token  ) {
+        toast.error("You need to be logged in to play");
+        router.push("/login");
+        return;
+      }
+      console.log("Establishing socket connection...");
+      console.log("Using token:", token);
+      const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
+        auth: { token },
+      });
+
+      // Connection events
+      newSocket.on("connect", () => {
+        console.log("Socket connected:", newSocket.id);
+        toast.success("Connected to game server");
+      });
+
+      newSocket.on("connect_error", (error) => {
+        console.error("Socket connection error:", error);
+        toast.error(`Connection error: ${error.message}`);
+        setLoadingMatch(false);
+      });
+
+      // Game events
+      newSocket.on('matchmaking-found', (data) => {
+        console.log('Match found!', data.gameId);
+        setGameId(data.gameId);
+        setMatchFound(true);
+        setLoadingMatch(false);
+        toast.success("Match found!");
+      });
+
+      newSocket.on("error", (error: { message: string }) => {
+        console.error("Socket error:", error);
+        toast.error(error.message);
+        setLoadingMatch(false);
+      });
+
+      newSocket.on("disconnect", (reason) => {
+        console.log("Socket disconnected:", reason);
+        if (reason === "io server disconnect") {
+          // The server has forcefully disconnected
+          toast.error("Disconnected from server");
+        }
+      });
+
+      setSocket(newSocket);
+
+      // Cleanup on unmount or step change
+      return () => {
+        console.log("Cleaning up socket");
+        newSocket.off("connect");
+        newSocket.off("connect_error");
+        newSocket.off("matchFound");
+        newSocket.off("error");
+        newSocket.off("disconnect");
+        newSocket.disconnect();
+      };
+  }, [ router]);
+
+  // Countdown Timer
   useEffect(() => {
     if (matchFound && countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      const timer = setTimeout(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
       return () => clearTimeout(timer);
     }
+
     if (countdown === 0 && gameId) {
-      router.push(`/chess?gameId=${gameId}`);
+      router.push(`/chess/${gameId}`);
     }
   }, [matchFound, countdown, router, gameId]);
+
+  // Start matchmaking
+  const startMatchmaking = async () => {
+    if (!socket) {
+      toast.error("Connection not established. Please try again.");
+      return;
+    }
+
+    if (!socket.connected) {
+      toast.error("Socket not connected. Please try again.");
+      return;
+    }
+
+    setLoadingMatch(true);
+    try {
+      // First check matchmaking status through API
+      const token = getToken();
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/game/matchmaking/join`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const data = await response.data;
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // If direct match is found, use it
+      if (data.gameId) {
+        setGameId(data.gameId);
+        setMatchFound(true);
+        setLoadingMatch(false);
+        return;
+      }
+      toast.success("Searching for opponent...");
+    } catch (error: any) {
+      console.error("Matchmaking error:", error);
+      toast.error(error.message || "Failed to start matchmaking");
+      setLoadingMatch(false);
+    }
+  };
 
   const next = async () => {
     if (step === 0) {
@@ -43,11 +180,6 @@ export default function PlayPage() {
       setStep(step - 1);
     }
   };
-
-  //matchmaking
-  const startMatchmaking = async () => {
-  }
- 
 
   const variants = {
     enter: (dir: "left" | "right") => ({
@@ -100,7 +232,9 @@ export default function PlayPage() {
             className="w-full"
           >
             {step === 0 && <GameSetup next={next} />}
-            {step === 1 && <MatchmakingStep onMatchFound={() => setMatchFound(true)} />}
+            {step === 1 && (
+              <MatchmakingStep onMatchFound={() => setMatchFound(true)} />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -137,7 +271,6 @@ export default function PlayPage() {
           <p className="mt-10 text-4xl font-bold animate-pulse">
             Match starts in {countdown}...
           </p>
-
         </div>
       )}
     </div>
