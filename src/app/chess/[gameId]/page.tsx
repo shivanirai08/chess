@@ -11,27 +11,135 @@ import {
 } from "react-chessboard";
 import { useUser } from "@/context/UserContext";
 import Image from "next/image";
+import { io, Socket } from "socket.io-client";
+import { toast } from "sonner";
 
 export default function ChessPage() {
   const { user } = useUser();
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [showAnimations, setShowAnimations] = useState(true);
   const [moves, setMoves] = useState<{ moveNumber: number; white?: string; black?: string }[]>([]);
-  const [currentMoveIndex, setCurrentMoveIndex] = useState(()=>moves.length -1);
+  const [currentMoveIndex, setCurrentMoveIndex] = useState(() => moves.length - 1);
 
-  // Initial game setup
-  const chessGameRef = useRef(
-    new Chess("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1")
-  );
+  // Game setup
+  const chessGameRef = useRef(new Chess("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1"));
   const chessGame = chessGameRef.current;
-
   const [chessPosition, setChessPosition] = useState(chessGame.fen());
   const [moveFrom, setMoveFrom] = useState("");
   const [optionSquares, setOptionSquares] = useState<Record<string, React.CSSProperties>>({});
   const [boardSize, setBoardSize] = useState(400);
-  const [promotionMove, setPromotionMove] = useState<{from: Square; to: Square;} | null>(null);
+  const [promotionMove, setPromotionMove] = useState<{ from: Square; to: Square } | null>(null);
 
-  // resize board dynamically
+  // helper: derive gameId from URL (works client-side)
+  const getGameIdFromPath = () => {
+    if (typeof window === "undefined") return null;
+    const parts = window.location.pathname.split("/").filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : null;
+  };
+
+  //Helper to get JWT token
+  const getToken = () => {
+    if (typeof window === "undefined") return null;
+    try {
+      const local = localStorage.getItem("token");
+      const session = sessionStorage.getItem("token");
+      return (local || session || null);
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      toast.error("Login required to connect to game");
+      return;
+    }
+
+    const gameId = getGameIdFromPath();
+
+    console.log("Connecting to socket...");
+    const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
+      auth: { token },
+    });
+
+    newSocket.on("connect", () => {
+      console.log("Socket connected:", newSocket.id);
+      toast.success("Connected to game server");
+      // join the game room using required event name
+      if (gameId) {
+        newSocket.emit("join-game", gameId);
+        console.log("Emitted join-game for", gameId);
+      }
+    });
+
+    newSocket.on("connect_error", (err) => {
+      console.error("Socket error:", err.message);
+      toast.error(`Connection error: ${err.message}`);
+    });
+
+    newSocket.on("game-state", (data) => {
+      console.log("Game state received:", data);
+      if (data?.fen) {
+        chessGame.load(data.fen);
+        setChessPosition(chessGame.fen());
+      }
+    });
+
+    newSocket.on("move-made", (data) => {
+      console.log("↔Move made by opponent:", data);
+      try {
+        // server provides move or fen -- prefer applying fen for safety
+        if (data?.fen) {
+          chessGame.load(data.fen);
+        } else if (data?.move) {
+          chessGame.move(data.move);
+        }
+        setChessPosition(chessGame.fen());
+        updateMoves();
+      } catch (e) {
+        console.error("Error applying opponent move", e);
+      }
+    });
+
+    newSocket.on("game-over", (data) => {
+      console.log("Game Over:", data);
+      alert("Game Over!");
+    });
+
+    newSocket.on("game-resigned", (data) => {
+      console.log("Opponent resigned:", data);
+      alert("Opponent resigned!");
+    });
+
+    newSocket.on("error", (err) => {
+      console.error("❗ Server error:", err);
+    });
+
+    newSocket.on("move-error", (err) => {
+      console.error("Invalid move:", err);
+    });
+
+    setSocket(newSocket);
+
+    return () => {
+      console.log("🧹 Cleaning up socket");
+      newSocket.disconnect();
+      newSocket.off("connect");
+      newSocket.off("connect_error");
+      newSocket.off("game-state");
+      newSocket.off("move-made");
+      newSocket.off("game-over");
+      newSocket.off("game-resigned");
+      newSocket.off("error");
+      newSocket.off("move-error");
+    };
+    // intentionally only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Resize board dynamically
   useEffect(() => {
     function updateSize() {
       if (typeof window === "undefined") return;
@@ -51,18 +159,15 @@ export default function ChessPage() {
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
-  // Scroll to end of moves list
   const movesContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    setCurrentMoveIndex(moves.length - 1); // always point to the latest move
+    setCurrentMoveIndex(moves.length - 1);
     const c = movesContainerRef.current;
-    if (!c) return;   // wait for layout, then scroll
-    requestAnimationFrame(() => {
-        c.scrollTo({ top: c.scrollHeight, behavior: "smooth" });
-    });
+    if (!c) return;
+    requestAnimationFrame(() => c.scrollTo({ top: c.scrollHeight, behavior: "smooth" }));
   }, [moves]);
 
-  // Highlight available moves
+  // Get move options
   function getMoveOptions(square: Square) {
     const moves = chessGame.moves({ square, verbose: true });
     if (moves.length === 0) {
@@ -87,7 +192,26 @@ export default function ChessPage() {
     return true;
   }
 
-  // Click-to-move with promotion check
+  // safe promotion piece renderer: try defaultPieces, fallback to unicode
+  const promotionPieceFallback = (p: string) => {
+    const unicode: Record<string, string> = {
+      q: "♕",
+      r: "♖",
+      b: "♗",
+      n: "♘",
+    };
+    try {
+      if (defaultPieces) {
+        const fn = (defaultPieces as any)[`w${p.toUpperCase()}`];
+        if (typeof fn === "function") return fn();
+      }
+    } catch {
+      /* ignore */
+    }
+    return <span className="text-3xl">{unicode[p] || "?"}</span>;
+  };
+
+  // Handle square click
   function onSquareClick({ square, piece }: SquareHandlerArgs) {
     if (currentMoveIndex !== moves.length - 1) return;
     if (!moveFrom && piece) {
@@ -108,7 +232,6 @@ export default function ChessPage() {
       return;
     }
 
-    // If it's a promotion move (pawn reaching last rank)
     if (foundMove.isPromotion()) {
       setPromotionMove({ from: moveFrom as Square, to: square as Square });
       setMoveFrom("");
@@ -116,11 +239,19 @@ export default function ChessPage() {
       return;
     }
 
-    // Normal move
     try {
       chessGame.move({ from: moveFrom, to: square });
       setChessPosition(chessGame.fen());
       updateMoves();
+
+      // Emit move to backend using required event name
+      const gameId = getGameIdFromPath();
+      if (socket && gameId) {
+        socket.emit("make-move", {
+          gameId,
+          move: { from: moveFrom, to: square },
+        });
+      }
     } catch {
       const hasMoveOptions = getMoveOptions(square as Square);
       setMoveFrom(hasMoveOptions ? square : "");
@@ -131,35 +262,27 @@ export default function ChessPage() {
     setOptionSquares({});
   }
 
-  // Handle piece drop (drag-and-drop)
-  function onPieceDrop({ sourceSquare, targetSquare}: PieceDropHandlerArgs): boolean {
+  // Handle drag drop
+  function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
     if (currentMoveIndex !== moves.length - 1) return false;
     if (!targetSquare) return false;
 
-    // get all verbose moves from the source square
     const possiblemoves = chessGame.moves({
       square: sourceSquare as Square,
       verbose: true,
     });
 
-    // find exact move matching drop target
     const foundMove = possiblemoves.find(
       (m) => m.from === sourceSquare && m.to === targetSquare
     );
 
     if (!foundMove) return false;
 
-    // promotion move (verbose move object provides helper)
     if (foundMove.isPromotion?.()) {
-      setPromotionMove({
-        from: sourceSquare as Square,
-        to: targetSquare as Square,
-      });
-      // return true to accept the drop visually the actual move will be applied after player picks promotion piece
+      setPromotionMove({ from: sourceSquare as Square, to: targetSquare as Square });
       return true;
     }
 
-    // normal non-promotion move
     try {
       chessGame.move({
         from: sourceSquare as Square,
@@ -168,6 +291,16 @@ export default function ChessPage() {
       });
       setChessPosition(chessGame.fen());
       updateMoves();
+
+      // Emit move to backend using required event name
+      const gameId = getGameIdFromPath();
+      if (socket && gameId) {
+        socket.emit("make-move", {
+          gameId,
+          move: { from: sourceSquare, to: targetSquare, promotion: "q" },
+        });
+      }
+
       setMoveFrom("");
       setOptionSquares({});
       return true;
@@ -176,7 +309,7 @@ export default function ChessPage() {
     }
   }
 
-  // Handle promotion selection
+  // Handle promotion
   function handlePromotion(piece: PieceSymbol) {
     if (!promotionMove) return;
     try {
@@ -187,52 +320,58 @@ export default function ChessPage() {
       });
       setChessPosition(chessGame.fen());
       updateMoves();
+
+      // Emit promotion move using required event name
+      const gameId = getGameIdFromPath();
+      if (socket && gameId) {
+        socket.emit("make-move", {
+          gameId,
+          move: { from: promotionMove.from, to: promotionMove.to, promotion: piece },
+        });
+      }
     } catch (e) {
       console.error("Promotion failed", e);
     }
     setPromotionMove(null);
   }
 
-  //Handle move history
+  // emit resign
+  function resignGame() {
+    const gameId = getGameIdFromPath();
+    if (socket && gameId) {
+      socket.emit("resign", gameId);
+    }
+    // keep UI unchanged: still log/resign UX handled by server events
+    console.log("Resigned", gameId);
+  }
+
   function updateMoves() {
-  const history = chessGame.history(); // ["d4", "d5", "f4", ...]
-  const formatted: { moveNumber: number; white?: string; black?: string }[] = [];
-  for (let i = 0; i < history.length; i += 2) {
-    formatted.push({
-      moveNumber: i / 2 + 1,
-      white: history[i],
-      black: history[i + 1],
-    });
-  }
-  setMoves(formatted);
+    const history = chessGame.history();
+    const formatted: { moveNumber: number; white?: string; black?: string }[] = [];
+    for (let i = 0; i < history.length; i += 2) {
+      formatted.push({
+        moveNumber: i / 2 + 1,
+        white: history[i],
+        black: history[i + 1],
+      });
+    }
+    setMoves(formatted);
   }
 
-  //Handle go to move
   function goToMove(index: number) {
-      const newGame = new Chess("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1"); // starting position
-    
-      for (let i = 0; i <= index; i++) {
-        const move = moves[i];
-        if (!move) break;
-    
-        // move.white
-        if (move.white) {
-          newGame.move(move.white);
-        }
-        // move.black
-        if (i === index && !move.black) break; // last move might be white only
-        if (move.black) {
-          newGame.move(move.black);
-        }
-      }
-    
-      chessGameRef.current = newGame;
-      setChessPosition(newGame.fen());
-      setCurrentMoveIndex(index);
+    const newGame = new Chess("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1");
+    for (let i = 0; i <= index; i++) {
+      const move = moves[i];
+      if (!move) break;
+      if (move.white) newGame.move(move.white);
+      if (i === index && !move.black) break;
+      if (move.black) newGame.move(move.black);
+    }
+    chessGameRef.current = newGame;
+    setChessPosition(newGame.fen());
+    setCurrentMoveIndex(index);
   }
 
-
-  // ♟ Chessboard options
   const chessboardOptions = {
     position: chessPosition,
     onPieceDrop,
@@ -254,7 +393,7 @@ export default function ChessPage() {
 
   return (
     <div className="h-full lg:h-screen w-full flex flex-col">
-      {/* Header */}
+      {/* HEADER */}
       <div className="flex justify-between items-center pt-2 pb-3 px-4 border-white/10">
         <h1 className="text-2xl font-bold">Chess</h1>
         <div className="flex gap-2">
@@ -268,7 +407,7 @@ export default function ChessPage() {
           <Button
             size="small"
             variant="destructive"
-            onClick={() => console.log("Resign")}
+            onClick={() => resignGame()}
             className="px-2 py-1"
           >
             Resign
@@ -276,12 +415,11 @@ export default function ChessPage() {
         </div>
       </div>
 
-      {/* Main content */}
       <div
         className="flex gap-2 justify-center items-start flex-col lg:flex-row"
         style={isDesktop ? { height: `${boardSize}px` } : {}}
       >
-        {/* Left: Chessboard */}
+        {/* LEFT: CHESSBOARD */}
         <div className="relative flex justify-center items-center w-full lg:w-auto h-full">
           {promotionMove && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -292,9 +430,7 @@ export default function ChessPage() {
                     onClick={() => handlePromotion(p)}
                     className="w-20 h-20 sm:w-24 sm:h-24 bg-zinc-800 hover:bg-zinc-700 rounded flex items-center justify-center"
                   >
-                    {defaultPieces[
-                      `w${p.toUpperCase()}` as keyof typeof defaultPieces
-                    ]()}
+                    {promotionPieceFallback(p)}
                   </button>
                 ))}
               </div>
@@ -303,10 +439,9 @@ export default function ChessPage() {
           <Chessboard options={chessboardOptions} />
         </div>
 
-        {/* Right: Sidebar */}
+        {/* RIGHT: SIDEBAR — SAME */}
         <div className="w-full lg:w-1/3 flex flex-col justify-between h-full px-4 lg:pb-4">
           <div className="flex flex-col gap-4">
-            {/* Player Info */}
             <div className="flex justify-between items-center p-1 sm:p-3 rounded-lg">
               <div className="flex justify-between items-center gap-2 sm:gap-4">
                 <div className="flex flex-col items-center gap-2">
@@ -343,17 +478,25 @@ export default function ChessPage() {
               </div>
             </div>
 
-            {/* Moves list */}
+            {/* Moves */}
             <div className="relative bg-zinc-900 rounded-lg text-sm">
               <p className="font-semibold mb-2 sticky top-0 bg-zinc-900 p-2 rounded-lg">
                 Moves
               </p>
-              <div className="p-2 overflow-y-auto max-h-48 lg:max-h-78" ref={movesContainerRef}>
+              <div
+                className="p-2 overflow-y-auto max-h-48 lg:max-h-78"
+                ref={movesContainerRef}
+              >
                 <table className="w-full text-left">
-                  <tbody >
+                  <tbody>
                     {moves.map((row, idx) => (
-                      <tr key={row.moveNumber} className={idx === currentMoveIndex ? 'bg-zinc-800' : ''}>
-                        <td className="pr-1 text-gray-400 px-2 py-1 rounded-l-md">{row.moveNumber}.</td>
+                      <tr
+                        key={row.moveNumber}
+                        className={idx === currentMoveIndex ? "bg-zinc-800" : ""}
+                      >
+                        <td className="pr-1 text-gray-400 px-2 py-1 rounded-l-md">
+                          {row.moveNumber}.
+                        </td>
                         <td className="font-bold">{row.white}</td>
                         <td className="pl-2 rounded-r-md">{row.black}</td>
                       </tr>
@@ -364,28 +507,36 @@ export default function ChessPage() {
             </div>
           </div>
 
-          {/* Navigation buttons */}
+          {/* Navigation */}
           <div className="flex justify-center gap-2 mt-4 lg:mt-0 sticky bottom-0 py-2 bg-black">
-              <button
-                className="px-3 py-2 bg-zinc-900 text-xl md:text-2xl cursor-pointer rounded-lg disabled:opacity-40"
-                onClick={() => goToMove(-1)}
-                disabled={currentMoveIndex <= -1}
-              >⏮</button>
-              <button
-                className="px-3 py-2 bg-zinc-900 text-xl md:text-2xl cursor-pointer rounded-lg disabled:opacity-40"
-                onClick={() => goToMove(Math.max(currentMoveIndex - 1, -1))}
-                disabled={currentMoveIndex <= -1}
-              >◀</button>
-              <button
-                className="px-3 py-2 bg-zinc-900 text-xl md:text-2xl cursor-pointer rounded-lg disabled:opacity-40"
-                onClick={() => goToMove(Math.min(currentMoveIndex + 1, moves.length - 1))}
-                disabled={currentMoveIndex >= moves.length - 1}
-              >▶</button>
-              <button
-                className="px-3 py-2 bg-zinc-900 text-xl md:text-2xl cursor-pointer rounded-lg disabled:opacity-40"
-                onClick={() => goToMove(moves.length - 1)}
-                disabled={currentMoveIndex >= moves.length - 1}
-              >⏭</button>
+            <button
+              className="px-3 py-2 bg-zinc-900 text-xl md:text-2xl cursor-pointer rounded-lg disabled:opacity-40"
+              onClick={() => goToMove(-1)}
+              disabled={currentMoveIndex <= -1}
+            >
+              ⏮
+            </button>
+            <button
+              className="px-3 py-2 bg-zinc-900 text-xl md:text-2xl cursor-pointer rounded-lg disabled:opacity-40"
+              onClick={() => goToMove(Math.max(currentMoveIndex - 1, -1))}
+              disabled={currentMoveIndex <= -1}
+            >
+              ◀
+            </button>
+            <button
+              className="px-3 py-2 bg-zinc-900 text-xl md:text-2xl cursor-pointer rounded-lg disabled:opacity-40"
+              onClick={() => goToMove(Math.min(currentMoveIndex + 1, moves.length - 1))}
+              disabled={currentMoveIndex >= moves.length - 1}
+            >
+              ▶
+            </button>
+            <button
+              className="px-3 py-2 bg-zinc-900 text-xl md:text-2xl cursor-pointer rounded-lg disabled:opacity-40"
+              onClick={() => goToMove(moves.length - 1)}
+              disabled={currentMoveIndex >= moves.length - 1}
+            >
+              ⏭
+            </button>
           </div>
         </div>
       </div>

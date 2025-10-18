@@ -88,7 +88,7 @@ export default function OTPpage() {
       setTimeout(() => {
         const token = res.data.forgotPasswordAccessToken;
         {type === "signup" && localStorage.setItem("user", JSON.stringify(res.data.user));
-          localStorage.setItem("token", JSON.stringify(res.data.token))}
+          localStorage.setItem("token", (res.data.token))}
         router.push(
           type === "signup"
             ? "/dashboard"

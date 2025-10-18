@@ -17,23 +17,30 @@ export default function PlayPage() {
   const [matchFound, setMatchFound] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [gameId, setGameId] = useState<string | null>(null);
-  const [loadingMatch, setLoadingMatch] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
+  let username = "You";
+  try {
+
+    let user = JSON.parse(localStorage.getItem("user") || sessionStorage.getItem("user") || "{}");
+    username = user.username || "You";
+    console.log("Username:", username);
+  } catch (e) {
+    console.error("Error getting username:", e);
+  }
+
 
   // Get token from local storage or sessionStorage
   const getToken = () => {
     if (typeof window === "undefined") return null;
     
-    const localUser = localStorage.getItem("token");
-    const sessionUser = sessionStorage.getItem("token");
+    const localToken = localStorage.getItem("token");
+    const sessionToken = sessionStorage.getItem("token");
 
     try {
-      if (localUser) {
-        const userData = JSON.parse(localUser);
-        return userData || null;
-      } else if (sessionUser) {
-        const userData = JSON.parse(sessionUser);
-        return userData || null;
+      if (localToken) {
+        return localToken;
+      } else if (sessionToken) {
+        return sessionToken;
       }
       return null;
     } catch (e) {
@@ -66,7 +73,6 @@ export default function PlayPage() {
       newSocket.on("connect_error", (error) => {
         console.error("Socket connection error:", error);
         toast.error(`Connection error: ${error.message}`);
-        setLoadingMatch(false);
       });
 
       // Game events
@@ -74,14 +80,12 @@ export default function PlayPage() {
         console.log('Match found!', data.gameId);
         setGameId(data.gameId);
         setMatchFound(true);
-        setLoadingMatch(false);
         toast.success("Match found!");
       });
 
       newSocket.on("error", (error: { message: string }) => {
         console.error("Socket error:", error);
         toast.error(error.message);
-        setLoadingMatch(false);
       });
 
       newSocket.on("disconnect", (reason) => {
@@ -114,7 +118,6 @@ export default function PlayPage() {
       }, 1000);
       return () => clearTimeout(timer);
     }
-
     if (countdown === 0 && gameId) {
       router.push(`/chess/${gameId}`);
     }
@@ -132,7 +135,6 @@ export default function PlayPage() {
       return;
     }
 
-    setLoadingMatch(true);
     try {
       // First check matchmaking status through API
       const token = getToken();
@@ -155,14 +157,12 @@ export default function PlayPage() {
       if (data.gameId) {
         setGameId(data.gameId);
         setMatchFound(true);
-        setLoadingMatch(false);
         return;
       }
       toast.success("Searching for opponent...");
     } catch (error: any) {
       console.error("Matchmaking error:", error);
       toast.error(error.message || "Failed to start matchmaking");
-      setLoadingMatch(false);
     }
   };
 
@@ -251,7 +251,7 @@ export default function PlayPage() {
                 height={80}
                 className="rounded-full"
               />
-              <p className="mt-2 text-xl font-semibold">You</p>
+              <p className="mt-2 text-xl font-semibold">{username}</p>
             </div>
 
             <span className="text-3xl font-bold">VS</span>

@@ -71,7 +71,7 @@ export default function LogIn() {
 
       toast.success("Signed in successfully!");
       const userData = JSON.stringify(res.data.user);
-      const token = JSON.stringify(res.data.token);
+      const token = (res.data.token);
       
       if (rememberMe) {
         localStorage.setItem("user", userData);

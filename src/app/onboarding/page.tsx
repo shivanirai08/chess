@@ -43,7 +43,7 @@ export default function Onboarding() {
   // Question Navigation
   const next = () => {
     if (step == 2){
-      setUser({ name: name || "You", avatar });
+      setUser({ username: name || "You", avatar });
     }
     if (step < 3) {
       setDirection("right");
