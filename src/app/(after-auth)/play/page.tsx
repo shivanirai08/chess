@@ -9,6 +9,7 @@ import axios from "axios";
 import GameSetup from "@/components/layout/GameSetup";
 import MatchmakingStep from "@/components/layout/Matchmakingstep";
 import { toast } from "sonner";
+import Image from "next/image";
 
 export default function PlayPage() {
   const router = useRouter();
@@ -18,15 +19,15 @@ export default function PlayPage() {
   const [countdown, setCountdown] = useState(5);
   const [gameId, setGameId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
-  let username = "You";
-  try {
-
-    const user = JSON.parse(localStorage.getItem("user") || sessionStorage.getItem("user") || "{}");
-    username = user.username || "You";
-    console.log("Username:", username);
+  const [username, setUsername] = useState("You");
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || sessionStorage.getItem("user") || "{}");
+      setUsername(user.username || "You");
   } catch (e) {
     console.error("Error getting username:", e);
   }
+  }, []);
 
 
   // Get token from local storage or sessionStorage
@@ -246,7 +247,7 @@ export default function PlayPage() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
           <div className="flex items-center gap-8">
             <div className="flex flex-col items-center">
-              <img
+              <Image
                 src="/avatar7.svg"
                 alt="You"
                 width={80}
@@ -259,7 +260,7 @@ export default function PlayPage() {
             <span className="text-3xl font-bold">VS</span>
 
             <div className="flex flex-col items-center">
-              <img
+              <Image
                 src="/avatar8.svg"
                 alt="Opponent"
                 width={80}
