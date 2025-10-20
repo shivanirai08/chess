@@ -1,7 +1,7 @@
 "use client";
 
 import Button from "@/components/ui/Button";
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Chess, Square, PieceSymbol } from "chess.js";
 import {
   Chessboard,
@@ -202,7 +202,9 @@ export default function ChessPage() {
     };
     try {
       if (defaultPieces) {
-        const fn = (defaultPieces as any)[`w${p.toUpperCase()}`];
+        const key = `w${p.toUpperCase()}`;
+        const piecesLookup = defaultPieces as unknown as Record<string, () => React.ReactNode>;
+        const fn = piecesLookup[key];
         if (typeof fn === "function") return fn();
       }
     } catch {

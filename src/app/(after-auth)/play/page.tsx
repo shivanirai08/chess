@@ -21,7 +21,7 @@ export default function PlayPage() {
   let username = "You";
   try {
 
-    let user = JSON.parse(localStorage.getItem("user") || sessionStorage.getItem("user") || "{}");
+    const user = JSON.parse(localStorage.getItem("user") || sessionStorage.getItem("user") || "{}");
     username = user.username || "You";
     console.log("Username:", username);
   } catch (e) {
@@ -160,9 +160,11 @@ export default function PlayPage() {
         return;
       }
       toast.success("Searching for opponent...");
-    } catch (error: any) {
-      console.error("Matchmaking error:", error);
-      toast.error(error.message || "Failed to start matchmaking");
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        console.error("Matchmaking error:", error);
+        toast.error(error.message || "Failed to start matchmaking");
+      }
     }
   };
 
