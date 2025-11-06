@@ -9,6 +9,8 @@ import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
+import Cookies from "js-cookie";  
+import { useUserStore } from "@/store/useUserStore";
 
 export default function LogIn() {
   const router = useRouter();
@@ -17,6 +19,7 @@ export default function LogIn() {
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { setUser } = useUserStore();
 
   // error state
   const [errors, setErrors] = useState({
@@ -71,20 +74,20 @@ export default function LogIn() {
 
       toast.success("Signed in successfully!");
       const userData = JSON.stringify(res.data.user);
-      const token = (res.data.token);
       
-      if (rememberMe) {
-        localStorage.setItem("user", userData);
-        localStorage.setItem("token", token);
-        sessionStorage.removeItem("user");
-        sessionStorage.removeItem("token");
-      } else {
-        sessionStorage.setItem("user", userData);
-        sessionStorage.setItem("token", token);
-        localStorage.removeItem("user");
-        localStorage.removeItem("token");
+      if (res.data.token) {
+      Cookies.set("auth-token", res.data.token, {
+          path: "/", // accessible throughout the site
+          expires: 7, // cookie will live for 7 days
+          sameSite: "lax", // protects against CSRF
+          secure: process.env.NODE_ENV === "production", // only send cookie over HTTPS in production
+        });
       }
+  
+      setUser({ ...res.data.user, isGuest: false });
 
+      //remember me functionality
+    
       router.push("/dashboard");
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
@@ -189,7 +192,7 @@ export default function LogIn() {
               </div>
 
               <Link
-                href={`/resetpwd?email=${email}`}
+                href={`/resetpwd?email=${email}&routed=true`}
                 className="text-white hover:text-primary hover:underline"
               >
                 Forgot password?

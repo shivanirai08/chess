@@ -82,7 +82,7 @@ const validate = () => {
         password,
       });
       toast.success("Account created successfully! Please verify your email.");
-      router.push(`/verifyotp?type=signup&email=${email}`);
+      router.push(`/verifyotp?type=signup&email=${email}&routed=true`);
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         setErrors({...errors, username: true, email: true});

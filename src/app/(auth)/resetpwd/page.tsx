@@ -56,7 +56,7 @@ export default function ForgotPassword() {
       if (res.status === 200) {
         toast.success("Password reset link sent!");
         setTimer(30);
-        router.push(`/verifyotp?type=reset&email=${email}`);
+        router.push(`/verifyotp?type=reset&email=${email}&routed=true`);
       }
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {

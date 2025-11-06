@@ -5,17 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { LogOut, Play, Trophy, Users, Settings } from "lucide-react";
+import { useUserStore } from "@/store/useUserStore";
 
 export default function Dashboard() {
   const router = useRouter();
+  const { clearUser } = useUserStore();
 
   const handleLogout = () => {
     try {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem("user");
-
+      clearUser();
   } catch (err) {
     console.error("Failed to clear auth data", err);
   }

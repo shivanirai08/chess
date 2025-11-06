@@ -9,13 +9,14 @@ import {
   defaultPieces,
   PieceDropHandlerArgs,
 } from "react-chessboard";
-import { useUser } from "@/context/UserContext";
 import Image from "next/image";
 import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
+import Cookies from "js-cookie";
+import { useUserStore } from "@/store/useUserStore";
 
 export default function ChessPage() {
-  const { user } = useUser();
+  const { user, opponent } = useUserStore();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [showAnimations, setShowAnimations] = useState(true);
@@ -42,9 +43,7 @@ export default function ChessPage() {
   const getToken = () => {
     if (typeof window === "undefined") return null;
     try {
-      const local = localStorage.getItem("token");
-      const session = sessionStorage.getItem("token");
-      return (local || session || null);
+      return Cookies.get("auth-token") || null;
     } catch {
       return null;
     }
@@ -449,7 +448,7 @@ export default function ChessPage() {
                 <div className="flex flex-col items-center gap-2">
                   <div className="sm:h-16 sm:w-16 h-12 w-12">
                     <Image
-                      src={user.avatar}
+                      src={user?.avatar ?? "/avatar7.svg"}
                       alt="mee"
                       width={20}
                       height={20}
@@ -475,7 +474,7 @@ export default function ChessPage() {
                       className="rounded-full sm:h-16 sm:w-16 h-12 w-12"
                     />
                   </div>
-                  <span>Opponent</span>
+                  <span>{opponent?.username || "Opponent"}</span>
                 </div>
               </div>
             </div>

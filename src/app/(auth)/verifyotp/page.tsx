@@ -7,6 +7,8 @@ import Button from "@/components/ui/Button";
 import { toast } from "sonner";
 import axios from "axios";
 import { useRouter } from "next/navigation";
+import Cookies from "js-cookie";
+import { useUserStore } from "@/store/useUserStore";
 
 export default function OTPpage() {
   const router = useRouter();
@@ -17,6 +19,7 @@ export default function OTPpage() {
   const [timer, setTimer] = useState(40);
   const [status, setStatus] = useState<"idle" | "error" | "success">("idle");
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const { setUser } = useUserStore();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -88,13 +91,20 @@ export default function OTPpage() {
       setTimeout(() => {
         const token = res.data.forgotPasswordAccessToken;
         if (type === "signup") {
-          localStorage.setItem("user", JSON.stringify(res.data.user));
-          localStorage.setItem("token", res.data.token);
+          setUser({ ...res.data.user, isGuest: false });
+          if (res.data.token) {
+          Cookies.set("auth-token", res.data.token, {
+              path: "/", // accessible throughout the site
+              expires: 7, // cookie will live for 7 days
+              sameSite: "lax", // protects against CSRF
+              secure: process.env.NODE_ENV === "production", // only send cookie over HTTPS in production
+            });
+          }
         }
         router.push(
           type === "signup"
             ? "/dashboard"
-            : `/newpwd?token=${encodeURIComponent(token)}`
+            : `/newpwd?token=${encodeURIComponent(token)}&routed=true`
         );
       }, 600);
     } catch (error: unknown) {

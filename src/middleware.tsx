@@ -8,7 +8,7 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Get token (from cookies)
-  const token = req.cookies.get("token")?.value;
+  const token = req.cookies.get("auth-token")?.value;
 
   // Case 1: Authenticated user trying to access auth pages
   if (token && AUTH_ROUTES.some((route) => pathname.startsWith(route))) {
@@ -24,8 +24,7 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Case 3: /newpwd, /verifyotp accessible only if routed (optional)
-  // Example: if you pass a temp flag in query like ?routed=true
+  // Case 3: /newpwd, /verifyotp accessible only if routed
   if (
     ["/newpwd", "/verifyotp"].some((r) => pathname.startsWith(r))
   ) {

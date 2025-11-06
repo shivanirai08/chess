@@ -10,6 +10,8 @@ import GameSetup from "@/components/layout/GameSetup";
 import MatchmakingStep from "@/components/layout/Matchmakingstep";
 import { toast } from "sonner";
 import Image from "next/image";
+import Cookies from "js-cookie";
+import { useUserStore } from "@/store/useUserStore";
 
 export default function PlayPage() {
   const router = useRouter();
@@ -19,31 +21,14 @@ export default function PlayPage() {
   const [countdown, setCountdown] = useState(5);
   const [gameId, setGameId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [username, setUsername] = useState("You");
-  useEffect(() => {
-    try {
-      const user = JSON.parse(localStorage.getItem("user") || sessionStorage.getItem("user") || "{}");
-      setUsername(user.username || "You");
-  } catch (e) {
-    console.error("Error getting username:", e);
-  }
-  }, []);
+  const { user: { username } , setOpponent, opponent } = useUserStore();
 
 
-  // Get token from local storage or sessionStorage
+  // Get token from cookies
   const getToken = () => {
     if (typeof window === "undefined") return null;
-    
-    const localToken = localStorage.getItem("token");
-    const sessionToken = sessionStorage.getItem("token");
-
     try {
-      if (localToken) {
-        return localToken;
-      } else if (sessionToken) {
-        return sessionToken;
-      }
-      return null;
+      return Cookies.get("auth-token") || null;
     } catch (e) {
       console.error("Error parsing user data:", e);
       return null;
@@ -80,6 +65,7 @@ export default function PlayPage() {
       newSocket.on('matchmaking-found', (data) => {
         console.log('Match found!', data.gameId);
         setGameId(data.gameId);
+        setOpponent(data.opponent);
         setMatchFound(true);
         toast.success("Match found!");
       });
@@ -267,7 +253,7 @@ export default function PlayPage() {
                 height={80}
                 className="rounded-full"
               />
-              <p className="mt-2 text-xl font-semibold">Opponent</p>
+              <p className="mt-2 text-xl font-semibold">{opponent?.username || "Opponent"}</p>
             </div>
           </div>
 

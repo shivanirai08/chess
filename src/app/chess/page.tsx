@@ -9,7 +9,7 @@ import {
   defaultPieces,
   PieceDropHandlerArgs,
 } from "react-chessboard";
-import { useUser } from "@/context/UserContext";
+import { useUser } from "@/store/useUserStore";
 import Image from "next/image";
 
 export default function ChessPage() {
