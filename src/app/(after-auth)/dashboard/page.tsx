@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { LogOut, Play, Trophy, Users, Settings } from "lucide-react";
 import { useUserStore } from "@/store/useUserStore";
+import Cookies from "js-cookie";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export default function Dashboard() {
   const handleLogout = () => {
     try {
       clearUser();
+      Cookies.remove("auth-token");
   } catch (err) {
     console.error("Failed to clear auth data", err);
   }

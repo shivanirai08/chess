@@ -8,38 +8,51 @@ import {
   SquareHandlerArgs,
   defaultPieces,
   PieceDropHandlerArgs,
+  PieceHandlerArgs,
 } from "react-chessboard";
 import Image from "next/image";
 import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
 import Cookies from "js-cookie";
 import { useUserStore } from "@/store/useUserStore";
+import GameResultModal from "@/components/ui/GameResultModal";
 
 export default function ChessPage() {
-  const { user, opponent } = useUserStore();
+  const { user, opponent, setOpponent } = useUserStore();
+  const userId = user.id; // Extract user ID once
+  const username = user.username;
+  
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [showAnimations, setShowAnimations] = useState(true);
   const [moves, setMoves] = useState<{ moveNumber: number; white?: string; black?: string }[]>([]);
   const [currentMoveIndex, setCurrentMoveIndex] = useState(() => moves.length - 1);
+  const [gameStatus, setGameStatus] = useState<string>("active");
+  const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
+  const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
+  const [isResultModalOpen, setIsResultModalOpen] = useState(false);
+  const [gameResult, setGameResult] = useState<{
+    type: "win" | "loss" | "draw" | "abandoned";
+    message: string;
+    } | null>(null);
 
   // Game setup
-  const chessGameRef = useRef(new Chess("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1"));
+  const chessGameRef = useRef(new Chess());
   const chessGame = chessGameRef.current;
   const [chessPosition, setChessPosition] = useState(chessGame.fen());
+  const [initialFen, setInitialFen] = useState<string>(new Chess().fen());
   const [moveFrom, setMoveFrom] = useState("");
   const [optionSquares, setOptionSquares] = useState<Record<string, React.CSSProperties>>({});
   const [boardSize, setBoardSize] = useState(400);
   const [promotionMove, setPromotionMove] = useState<{ from: Square; to: Square } | null>(null);
 
-  // helper: derive gameId from URL (works client-side)
+  // Helper functions
   const getGameIdFromPath = () => {
     if (typeof window === "undefined") return null;
     const parts = window.location.pathname.split("/").filter(Boolean);
     return parts.length ? parts[parts.length - 1] : null;
   };
 
-  //Helper to get JWT token
   const getToken = () => {
     if (typeof window === "undefined") return null;
     try {
@@ -49,6 +62,236 @@ export default function ChessPage() {
     }
   };
 
+  // API Helper Functions
+  const fetchGameState = async (gameId: string) => {
+    const token = getToken();
+    if (!token) {
+      toast.error("Authentication required");
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/${gameId}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          toast.error("Game not found");
+        } else {
+          toast.error("Failed to fetch game state");
+        }
+        return null;
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error fetching game state:", error);
+      toast.error("Network error while fetching game");
+      return null;
+    }
+  };
+
+  const makeMove = async (gameId: string, move: { from: string; to: string; promotion?: string }) => {
+    const token = getToken();
+    if (!token) {
+      toast.error("Authentication required");
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/${gameId}/move`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ move }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 400) {
+          toast.error(errorData.message || "Invalid move or not your turn");
+        } else if (response.status === 404) {
+          toast.error("Game not found");
+        } else {
+          toast.error("Failed to make move");
+        }
+        return null;
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error making move:", error);
+      toast.error("Network error while making move");
+      return null;
+    }
+  };
+
+  const resignGame = async (gameId: string) => {
+    const token = getToken();
+    if (!token) {
+      toast.error("Authentication required");
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/${gameId}/resign`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 400) {
+          toast.error(errorData.message || "Cannot resign from this game");
+        } else if (response.status === 404) {
+          toast.error("Game not found");
+        } else {
+          toast.error("Failed to resign");
+        }
+        return null;
+      }
+
+      const data = await response.json();
+      // toast.success("You resigned from the game");
+      // setGameResult({ type: "loss", message: "You resigned from the game" });
+      // setIsResultModalOpen(true);
+      return data;
+    } catch (error) {
+      console.error("Error resigning:", error);
+      toast.error("Network error while resigning");
+      return null;
+    }
+  };
+
+  // Helper to set game result
+  const setGameResultHelper = (result: string, whitePlayerId: string, blackPlayerId: string, whitePlayerName: string, blackPlayerName: string) => {
+    if (result === "white_wins") {
+      const isWinner = whitePlayerId === userId;
+      setGameResult({
+        type: isWinner ? "win" : "loss",
+        message: isWinner ? "You win!" : `${whitePlayerName} wins!`,
+      });
+    } else if (result === "black_wins") {
+      const isWinner = blackPlayerId === userId;
+      setGameResult({
+        type: isWinner ? "win" : "loss",
+        message: isWinner ? "You win!" : `${blackPlayerName} wins!`,
+      });
+    } else if (result === "draw") {
+      setGameResult({ type: "draw", message: "It's a draw!" });
+    } else if (result === "abandoned") {
+      setGameResult({ type: "abandoned", message: "Game Abandoned" });
+    }
+  };
+
+  // Fetch initial game state
+  useEffect(() => {
+    const gameId = getGameIdFromPath();
+    if (!gameId || !userId) return;
+
+    const loadGameState = async () => {
+      const gameData = await fetchGameState(gameId);
+      if (gameData && gameData.game) {
+        const { game } = gameData;
+
+        console.log("Game data received:", game);
+
+        // Determine player color and set board orientation
+        if (game.whitePlayerId === userId) {
+          setPlayerColor("white");
+          setBoardOrientation("white");
+          console.log("Player is WHITE, board orientation: white");
+        } else if (game.blackPlayerId === userId) {
+          setPlayerColor("black");
+          setBoardOrientation("black");
+          console.log("Player is BLACK, board orientation: black");
+        }
+
+        // Reset chess game to starting position
+        const startingFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        chessGame.reset();
+        setInitialFen(startingFen);
+
+        // Load moves from API if available
+        if (game.moves && Array.isArray(game.moves) && game.moves.length > 0) {
+          console.log("Loading moves from API:", game.moves);
+
+          // Apply each move from the API
+          for (const move of game.moves) {
+            try {
+              chessGame.move(move);
+            } catch (error) {
+              console.error("Error applying move:", move, error);
+            }
+          }
+
+          // Update position and moves display
+          setChessPosition(chessGame.fen());
+          updateMovesFromHistory();
+        } else if (game.fen) {
+          // Fallback: load FEN directly if no moves array
+          console.log("Loading FEN directly:", game.fen);
+          try {
+            chessGame.load(game.fen);
+            setChessPosition(chessGame.fen());
+            updateMovesFromHistory();
+          } catch (error) {
+            console.error("Error loading FEN:", error);
+          }
+        } else {
+          // New game, no moves yet
+          setChessPosition(chessGame.fen());
+        }
+
+        // Set game status
+        setGameStatus(game.status);
+
+        // **SINGLE PLACE TO SET OPPONENT**
+        if (game.whitePlayerName && game.blackPlayerName) {
+          const isWhite = game.whitePlayerId === userId;
+          const opponentData = {
+            username: isWhite ? game.blackPlayerName : game.whitePlayerName,
+            userId: isWhite ? game.blackPlayerId : game.whitePlayerId,
+            isGuest: game.isGuestGame || false,
+            avatar: isWhite ? "/avatar8.svg" : "/avatar8.svg" // You can add avatar logic here
+          };
+
+          // Only set if opponent is different from current user
+          if (opponentData.username !== username) {
+            setOpponent(opponentData);
+          }
+        }
+
+        // Show game status if game is over
+        if (game.status === "completed" && game.result) {
+          setGameResultHelper(
+            game.result,
+            game.whitePlayerId,
+            game.blackPlayerId,
+            game.whitePlayerName,
+            game.blackPlayerName
+          );
+          setIsResultModalOpen(true);
+        }
+      }
+    };
+
+    loadGameState();
+  }, [userId, username]); // Added dependencies
+
+  // Socket connection
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -57,6 +300,7 @@ export default function ChessPage() {
     }
 
     const gameId = getGameIdFromPath();
+    if (!gameId) return;
 
     console.log("Connecting to socket...");
     const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
@@ -64,13 +308,9 @@ export default function ChessPage() {
     });
 
     newSocket.on("connect", () => {
-      console.log("Socket connected:", newSocket.id);
-      toast.success("Connected to game server");
-      // join the game room using required event name
-      if (gameId) {
-        newSocket.emit("join-game", gameId);
-        console.log("Emitted join-game for", gameId);
-      }
+      console.log("✅ Socket connected:", newSocket.id);
+      console.log("🎮 Joining game room:", gameId);
+      newSocket.emit("join-game", gameId);
     });
 
     newSocket.on("connect_error", (err) => {
@@ -83,47 +323,86 @@ export default function ChessPage() {
       if (data?.fen) {
         chessGame.load(data.fen);
         setChessPosition(chessGame.fen());
+        updateMovesFromHistory();
+      }
+      if (data?.status) {
+        setGameStatus(data.status);
       }
     });
 
     newSocket.on("move-made", (data) => {
-      console.log("↔Move made by opponent:", data);
+      if(data?.player === username) return; // Ignore your own move
       try {
-        // server provides move or fen -- prefer applying fen for safety
-        if (data?.fen) {
-          chessGame.load(data.fen);
-        } else if (data?.move) {
-          chessGame.move(data.move);
+        if (data?.move) {
+          const moveResult = chessGame.move(data.move);
+          if (moveResult) {
+            const newFen = chessGame.fen();
+            setChessPosition(newFen);
+          }
         }
-        setChessPosition(chessGame.fen());
-        updateMoves();
+        updateMovesFromHistory();
       } catch (e) {
         console.error("Error applying opponent move", e);
+        toast.error("Failed to apply opponent's move");
       }
     });
 
     newSocket.on("game-over", (data) => {
       console.log("Game Over:", data);
-      alert("Game Over!");
+      setGameStatus("completed");
+
+      if (data?.result) {
+      if (data.result == "white_wins"){
+        const isWinner = data.winner === userId;
+        setGameResult({
+          type: isWinner ? "win" : "loss",
+          message: isWinner ? "Checkmate! You win!" : "Checkmate! You lose!",
+        });
+      } else if (data.result == "black_wins"){
+        const isWinner = data.winner === userId;
+        setGameResult({
+          type: isWinner ? "win" : "loss",
+          message: isWinner ? "Checkmate! You win!" : "Checkmate! You lose!",
+        });
+      } else {
+        setGameResult({ type: "draw", message: "The game ended in a draw." });
+      }
+    }
+      setIsResultModalOpen(true);
     });
 
     newSocket.on("game-resigned", (data) => {
-      console.log("Opponent resigned:", data);
-      alert("Opponent resigned!");
+      console.log("game-resigned event received:", data);
+      setGameStatus("completed");
+      setGameResult({
+        type: "win",
+        message: "Opponent resigned! You win!",
+      });
+      setIsResultModalOpen(true);
+      toast.success("Opponent resigned! You win!");
+    });
+
+    newSocket.on("players-connected", (data) => {
+      console.log("Players connected status:", data);
+      if (data?.playersConnected) {
+        toast.success("Both players connected");
+      }
     });
 
     newSocket.on("error", (err) => {
-      console.error("❗ Server error:", err);
+      console.error("Server error:", err);
+      toast.error(err.message || "Server error occurred");
     });
 
     newSocket.on("move-error", (err) => {
       console.error("Invalid move:", err);
+      toast.error(err.message || "Invalid move");
     });
 
     setSocket(newSocket);
 
     return () => {
-      console.log("🧹 Cleaning up socket");
+      console.log("Cleaning up socket");
       newSocket.disconnect();
       newSocket.off("connect");
       newSocket.off("connect_error");
@@ -131,12 +410,11 @@ export default function ChessPage() {
       newSocket.off("move-made");
       newSocket.off("game-over");
       newSocket.off("game-resigned");
+      newSocket.off("players-connected");
       newSocket.off("error");
       newSocket.off("move-error");
     };
-    // intentionally only run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userId, username]); // Added dependencies
 
   // Resize board dynamically
   useEffect(() => {
@@ -191,6 +469,36 @@ export default function ChessPage() {
     return true;
   }
 
+  // Restrict piece dragging based on player color
+  function canDragPiece({ piece }: PieceHandlerArgs): boolean {
+    // Can't drag pieces if game is over
+    if (gameStatus === "completed") {
+      return false;
+    }
+
+    // Can't drag pieces when reviewing history
+    if (currentMoveIndex !== moves.length - 1) {
+      return false;
+    }
+
+    // Check if it's the player's turn
+    const currentTurn = chessGame.turn(); // 'w' or 'b'
+    const isPlayerTurn =
+      (playerColor === "white" && currentTurn === "w") ||
+      (playerColor === "black" && currentTurn === "b");
+
+    if (!isPlayerTurn) {
+      return false;
+    }
+
+    // Only allow dragging pieces of the player's color
+    const pieceColor = piece.pieceType[0]; // 'w' or 'b'
+    return (
+      (playerColor === "white" && pieceColor === "w") ||
+      (playerColor === "black" && pieceColor === "b")
+    );
+  }
+
   // safe promotion piece renderer: try defaultPieces, fallback to unicode
   const promotionPieceFallback = (p: string) => {
     const unicode: Record<string, string> = {
@@ -213,9 +521,33 @@ export default function ChessPage() {
   };
 
   // Handle square click
-  function onSquareClick({ square, piece }: SquareHandlerArgs) {
+  function onSquareClick({ square, piece }: SquareHandlerArgs): void {
+    if (gameStatus === "completed") {
+      return;
+    }
     if (currentMoveIndex !== moves.length - 1) return;
+
+    // Check if it's the player's turn
+    const currentTurn = chessGame.turn();
+    const isPlayerTurn =
+      (playerColor === "white" && currentTurn === "w") ||
+      (playerColor === "black" && currentTurn === "b");
+
+    if (!isPlayerTurn) {
+      return;
+    }
+
     if (!moveFrom && piece) {
+      // Only allow clicking on own pieces
+      const pieceColor = piece.pieceType[0];
+      const canClick =
+        (playerColor === "white" && pieceColor === "w") ||
+        (playerColor === "black" && pieceColor === "b");
+
+      if (!canClick) {
+        return;
+      }
+
       const hasMoveOptions = getMoveOptions(square as Square);
       if (hasMoveOptions) setMoveFrom(square);
       return;
@@ -241,19 +573,27 @@ export default function ChessPage() {
     }
 
     try {
-      chessGame.move({ from: moveFrom, to: square });
-      setChessPosition(chessGame.fen());
-      updateMoves();
+      const moveData = { from: moveFrom, to: square };
+      const moveResult = chessGame.move(moveData);
 
-      // Emit move to backend using required event name
-      const gameId = getGameIdFromPath();
-      if (socket && gameId) {
-        socket.emit("make-move", {
-          gameId,
-          move: { from: moveFrom, to: square },
-        });
+      if (moveResult) {
+        // Move was successful, update UI
+        setChessPosition(chessGame.fen());
+        updateMovesFromHistory();
+
+        const gameId = getGameIdFromPath();
+        if (gameId && socket) {
+          // Use WebSocket only for real-time updates
+          socket.emit("make-move", { gameId, move: moveData });
+        }
+      } else {
+        toast.error("Invalid move");
+        const hasMoveOptions = getMoveOptions(square as Square);
+        setMoveFrom(hasMoveOptions ? square : "");
+        return;
       }
-    } catch {
+    } catch (error) {
+      toast.error("Invalid move");
       const hasMoveOptions = getMoveOptions(square as Square);
       setMoveFrom(hasMoveOptions ? square : "");
       return;
@@ -265,8 +605,21 @@ export default function ChessPage() {
 
   // Handle drag drop
   function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
+    if (gameStatus === "completed") {
+      return false;
+    }
     if (currentMoveIndex !== moves.length - 1) return false;
     if (!targetSquare) return false;
+
+    // Check if it's the player's turn
+    const currentTurn = chessGame.turn();
+    const isPlayerTurn =
+      (playerColor === "white" && currentTurn === "w") ||
+      (playerColor === "black" && currentTurn === "b");
+
+    if (!isPlayerTurn) {
+      return false;
+    }
 
     const possiblemoves = chessGame.moves({
       square: sourceSquare as Square,
@@ -277,7 +630,10 @@ export default function ChessPage() {
       (m) => m.from === sourceSquare && m.to === targetSquare
     );
 
-    if (!foundMove) return false;
+    if (!foundMove) {
+      toast.error("Invalid move");
+      return false;
+    }
 
     if (foundMove.isPromotion?.()) {
       setPromotionMove({ from: sourceSquare as Square, to: targetSquare as Square });
@@ -285,68 +641,96 @@ export default function ChessPage() {
     }
 
     try {
-      chessGame.move({
+      const moveData = {
         from: sourceSquare as Square,
         to: targetSquare as Square,
-        promotion: "q",
-      });
-      setChessPosition(chessGame.fen());
-      updateMoves();
+        promotion: "q" as const,
+      };
 
-      // Emit move to backend using required event name
-      const gameId = getGameIdFromPath();
-      if (socket && gameId) {
-        socket.emit("make-move", {
-          gameId,
-          move: { from: sourceSquare, to: targetSquare, promotion: "q" },
-        });
+      const moveResult = chessGame.move(moveData);
+
+      if (moveResult) {
+        // Move was successful
+        setChessPosition(chessGame.fen());
+        updateMovesFromHistory();
+
+        const gameId = getGameIdFromPath();
+        if (gameId && socket) {
+          socket.emit("make-move", { gameId, move: moveData });
+        }
+
+        setMoveFrom("");
+        setOptionSquares({});
+        return true;
+      } else {
+        toast.error("Invalid move");
+        return false;
       }
-
-      setMoveFrom("");
-      setOptionSquares({});
-      return true;
-    } catch {
+    } catch (error) {
+      toast.error("Invalid move");
       return false;
     }
   }
 
   // Handle promotion
-  function handlePromotion(piece: PieceSymbol) {
+  async function handlePromotion(piece: PieceSymbol) {
     if (!promotionMove) return;
     try {
-      chessGame.move({
+      const moveData = {
         from: promotionMove.from,
         to: promotionMove.to,
         promotion: piece,
-      });
-      setChessPosition(chessGame.fen());
-      updateMoves();
+      };
 
-      // Emit promotion move using required event name
-      const gameId = getGameIdFromPath();
-      if (socket && gameId) {
-        socket.emit("make-move", {
-          gameId,
-          move: { from: promotionMove.from, to: promotionMove.to, promotion: piece },
-        });
+      const moveResult = chessGame.move(moveData);
+
+      if (moveResult) {
+        // Promotion successful
+        setChessPosition(chessGame.fen());
+        updateMovesFromHistory();
+
+        // Send promotion move to backend via both WebSocket and API
+        const gameId = getGameIdFromPath();
+        if (gameId && socket) {
+          socket.emit("make-move", { gameId, move: moveData });
+        }
+      } else {
+        toast.error("Failed to make promotion move");
       }
     } catch (e) {
       console.error("Promotion failed", e);
+      toast.error("Failed to make promotion move");
     }
     setPromotionMove(null);
   }
 
-  // emit resign
-  function resignGame() {
+  // Handle resign
+  async function handleResign() {
     const gameId = getGameIdFromPath();
-    if (socket && gameId) {
+    if (!gameId) return;
+
+    console.log("Resigning from game:", gameId);
+
+    // Call API to resign
+    const result = await resignGame(gameId);
+    console.log("Resign API response:", result);
+
+    // Also emit via WebSocket
+    if (socket && socket.connected) {
+      console.log("Emitting resign event via socket");
       socket.emit("resign", gameId);
+      console.log("Resign event emitted");
+    } else {
+      console.error("Socket not connected, cannot emit resign event");
     }
-    // keep UI unchanged: still log/resign UX handled by server events
-    console.log("Resigned", gameId);
+
+    // Update game status
+    if (result) {
+      setGameStatus("completed");
+    }
   }
 
-  function updateMoves() {
+  function updateMovesFromHistory() {
     const history = chessGame.history();
     const formatted: { moveNumber: number; white?: string; black?: string }[] = [];
     for (let i = 0; i < history.length; i += 2) {
@@ -360,13 +744,27 @@ export default function ChessPage() {
   }
 
   function goToMove(index: number) {
-    const newGame = new Chess("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1");
+    const newGame = new Chess();
+    newGame.load(initialFen);
+
     for (let i = 0; i <= index; i++) {
       const move = moves[i];
       if (!move) break;
-      if (move.white) newGame.move(move.white);
+      if (move.white) {
+        try {
+          newGame.move(move.white);
+        } catch (error) {
+          console.error("Error replaying white move:", move.white, error);
+        }
+      }
       if (i === index && !move.black) break;
-      if (move.black) newGame.move(move.black);
+      if (move.black) {
+        try {
+          newGame.move(move.black);
+        } catch (error) {
+          console.error("Error replaying black move:", move.black, error);
+        }
+      }
     }
     chessGameRef.current = newGame;
     setChessPosition(newGame.fen());
@@ -377,8 +775,10 @@ export default function ChessPage() {
     position: chessPosition,
     onPieceDrop,
     onSquareClick,
+    canDragPiece,
+    boardOrientation: boardOrientation,
     squareStyles: optionSquares,
-    id: "click-to-move",
+    id: "multiplayer-chess",
     showAnimations,
     boardStyle: {
       borderRadius: "10px",
@@ -391,6 +791,12 @@ export default function ChessPage() {
     darkSquareStyle: { backgroundColor: "#b58863" },
     lightSquareStyle: { backgroundColor: "beige" },
   };
+
+  // Determine whose turn it is
+  const currentTurn = chessGame.turn(); // 'w' or 'b'
+  const isMyTurn =
+    (playerColor === "white" && currentTurn === "w") ||
+    (playerColor === "black" && currentTurn === "b");
 
   return (
     <div className="h-full lg:h-screen w-full flex flex-col">
@@ -408,8 +814,9 @@ export default function ChessPage() {
           <Button
             size="small"
             variant="destructive"
-            onClick={() => resignGame()}
+            onClick={() => handleResign()}
             className="px-2 py-1"
+            disabled={gameStatus === "completed"}
           >
             Resign
           </Button>
@@ -440,7 +847,7 @@ export default function ChessPage() {
           <Chessboard options={chessboardOptions} />
         </div>
 
-        {/* RIGHT: SIDEBAR — SAME */}
+        {/* RIGHT: SIDEBAR */}
         <div className="w-full lg:w-1/3 flex flex-col justify-between h-full px-4 lg:pb-4">
           <div className="flex flex-col gap-4">
             <div className="flex justify-between items-center p-1 sm:p-3 rounded-lg">
@@ -449,25 +856,41 @@ export default function ChessPage() {
                   <div className="sm:h-16 sm:w-16 h-12 w-12">
                     <Image
                       src={user?.avatar ?? "/avatar7.svg"}
-                      alt="mee"
+                      alt="me"
                       width={20}
                       height={20}
                       className="rounded-full sm:h-16 sm:w-16 h-12 w-12"
                     />
                   </div>
-                  <span>{user.username}</span>
+                  <span>{username} <span className="text-gray-400 text-sm">(you)</span></span>
                 </div>
-                <span className="px-2 py-1 bg-zinc-900 rounded">08:05</span>
+                <span
+                  className={`px-2 py-1 rounded transition-all duration-300 ${
+                    isMyTurn
+                      ? "bg-primary text-white font-bold shadow-lg shadow-primary/50 animate-pulse"
+                      : "bg-zinc-900"
+                  }`}
+                >
+                  08:05
+                </span>
               </div>
 
               <div className="flex justify-center text-gray-400">vs</div>
 
               <div className="flex justify-between items-center sm:gap-4 gap-2">
-                <span className="px-2 py-1 bg-zinc-900 rounded">08:05</span>
+                <span
+                  className={`px-2 py-1 rounded transition-all duration-300 ${
+                    !isMyTurn
+                      ? "bg-primary text-white font-bold shadow-lg shadow-primary/50 animate-pulse"
+                      : "bg-zinc-900"
+                  }`}
+                >
+                  08:05
+                </span>
                 <div className="flex flex-col items-center gap-2">
                   <div className="sm:h-16 sm:w-16 h-12 w-12">
                     <Image
-                      src="/avatar8.svg"
+                      src={opponent?.avatar || "/avatar8.svg"}
                       alt="opponent"
                       width={20}
                       height={20}
@@ -541,6 +964,14 @@ export default function ChessPage() {
           </div>
         </div>
       </div>
+      {gameResult && (
+        <GameResultModal
+          isOpen={isResultModalOpen}
+          result={gameResult.type}
+          message={gameResult.message}
+          onClose={() => setIsResultModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

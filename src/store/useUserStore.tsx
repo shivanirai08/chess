@@ -40,8 +40,11 @@ export const useUserStore = create<UserStore>()(
       setUser: (user) => set({ user, isLoading: false }),
       setOpponent: (opponent) => set({ opponent }),
       clearOpponent: () => set({ opponent: { username : "Opponent", avatar: "/avatar8.svg", userId: "", isGuest: true } }),
-      clearUser: () =>
-        set({ user: { username: "You", avatar: "/avatar7.svg" }, isLoading: false }),
+      clearUser: () => {
+        localStorage.removeItem("user");
+        localStorage.removeItem("user-store");
+        set({ user: { username: "You", avatar: "/avatar7.svg" }, opponent: null, isLoading: false });
+      },
     }),
     {
       name: "user-store", // key for storage

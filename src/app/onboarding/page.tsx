@@ -8,12 +8,12 @@ import Button from "@/components/ui/Button";
 import MatchmakingStep from "@/components/layout/Matchmakingstep";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useUser } from "@/store/useUserStore";
+import { useUserStore } from "@/store/useUserStore";
 import GameSetup from "@/components/layout/GameSetup";
 
 export default function Onboarding() {
   const router = useRouter();
-  const { setUser } = useUser();
+  const { setUser } = useUserStore();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState("/avatar7.svg");

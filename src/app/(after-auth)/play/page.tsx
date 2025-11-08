@@ -44,8 +44,6 @@ export default function PlayPage() {
         router.push("/login");
         return;
       }
-      console.log("Establishing socket connection...");
-      console.log("Using token:", token);
       const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
         auth: { token },
       });
@@ -65,6 +63,7 @@ export default function PlayPage() {
       newSocket.on('matchmaking-found', (data) => {
         console.log('Match found!', data.gameId);
         setGameId(data.gameId);
+        console.log("Opponent data:", data.opponent);
         setOpponent(data.opponent);
         setMatchFound(true);
         toast.success("Match found!");
@@ -90,12 +89,12 @@ export default function PlayPage() {
         console.log("Cleaning up socket");
         newSocket.off("connect");
         newSocket.off("connect_error");
-        newSocket.off("matchFound");
+        newSocket.off("matchmaking-found");
         newSocket.off("error");
         newSocket.off("disconnect");
         newSocket.disconnect();
       };
-  }, [ router]);
+  }, [router]);
 
   // Countdown Timer
   useEffect(() => {
@@ -110,7 +109,7 @@ export default function PlayPage() {
     }
   }, [matchFound, countdown, router, gameId]);
 
-  // Start matchmaking
+  // Start matchmaking api call
   const startMatchmaking = async () => {
     if (!socket) {
       toast.error("Connection not established. Please try again.");
