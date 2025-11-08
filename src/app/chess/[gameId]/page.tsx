@@ -305,6 +305,7 @@ export default function ChessPage() {
     console.log("Connecting to socket...");
     const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
       auth: { token },
+      transports: ["websocket", "polling"], // Prefer WebSocket, fallback to polling
     });
 
     newSocket.on("connect", () => {

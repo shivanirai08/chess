@@ -46,6 +46,7 @@ export default function PlayPage() {
       }
       const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
         auth: { token },
+        transports: ["websocket", "polling"], // Prefer WebSocket, fallback to polling
       });
 
       // Connection events
