@@ -1,14 +1,16 @@
 "use client";
 
-import Input from "@/components/Input";
+import Input from "@/components/ui/Input";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import Button from "@/components/Button";
+import Button from "@/components/ui/Button";
 import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
+import Cookies from "js-cookie";  
+import { useUserStore } from "@/store/useUserStore";
 
 export default function LogIn() {
   const router = useRouter();
@@ -17,6 +19,7 @@ export default function LogIn() {
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { setUser } = useUserStore();
 
   // error state
   const [errors, setErrors] = useState({
@@ -70,17 +73,22 @@ export default function LogIn() {
       );
 
       toast.success("Signed in successfully!");
-      const userData = JSON.stringify(res.data);
-
-      if (rememberMe) {
-        localStorage.setItem("user", userData);
-        sessionStorage.removeItem("user");
-      } else {
-        sessionStorage.setItem("user", userData);
-        localStorage.removeItem("user");
+      const userData = JSON.stringify(res.data.user);
+      
+      if (res.data.token) {
+      Cookies.set("auth-token", res.data.token, {
+          path: "/", // accessible throughout the site
+          expires: 7, // cookie will live for 7 days
+          sameSite: "lax", // protects against CSRF
+          secure: process.env.NODE_ENV === "production", // only send cookie over HTTPS in production
+        });
       }
+  
+      setUser({ ...res.data.user, isGuest: false });
 
-      router.push("/onboarding");
+      //remember me functionality
+    
+      router.push("/dashboard");
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         toast.error(
@@ -98,11 +106,7 @@ export default function LogIn() {
   };
 
   return (
-    <div
-      className="relative bg-fixed bg-cover bg-center bg-no-repeat h-screen overflow-hidden"
-      style={{ backgroundImage: "url('/bg.svg')" }}
-    >
-      <div className="fixed inset-0 bg-gradient-to-b from-black/30 to-black/50 pointer-events-none" />
+    <div className="relative h-screen overflow-hidden">
 
       {/* Logo */}
       <div className="absolute top-6 left-6 z-16">
@@ -188,7 +192,7 @@ export default function LogIn() {
               </div>
 
               <Link
-                href={`/resetpwd?email=${email}`}
+                href={`/resetpwd?email=${email}&routed=true`}
                 className="text-white hover:text-primary hover:underline"
               >
                 Forgot password?
