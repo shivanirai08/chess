@@ -95,6 +95,7 @@ export default function PlayPage() {
         newSocket.off("disconnect");
         newSocket.disconnect();
       };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   // Countdown Timer

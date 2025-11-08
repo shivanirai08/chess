@@ -73,8 +73,7 @@ export default function LogIn() {
       );
 
       toast.success("Signed in successfully!");
-      const userData = JSON.stringify(res.data.user);
-      
+
       if (res.data.token) {
       Cookies.set("auth-token", res.data.token, {
           path: "/", // accessible throughout the site

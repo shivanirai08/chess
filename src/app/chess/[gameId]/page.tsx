@@ -97,43 +97,6 @@ export default function ChessPage() {
     }
   };
 
-  const makeMove = async (gameId: string, move: { from: string; to: string; promotion?: string }) => {
-    const token = getToken();
-    if (!token) {
-      toast.error("Authentication required");
-      return null;
-    }
-
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/${gameId}/move`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ move }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 400) {
-          toast.error(errorData.message || "Invalid move or not your turn");
-        } else if (response.status === 404) {
-          toast.error("Game not found");
-        } else {
-          toast.error("Failed to make move");
-        }
-        return null;
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error("Error making move:", error);
-      toast.error("Network error while making move");
-      return null;
-    }
-  };
 
   const resignGame = async (gameId: string) => {
     const token = getToken();
@@ -289,6 +252,7 @@ export default function ChessPage() {
     };
 
     loadGameState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, username]); // Added dependencies
 
   // Socket connection
@@ -415,6 +379,7 @@ export default function ChessPage() {
       newSocket.off("error");
       newSocket.off("move-error");
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, username]); // Added dependencies
 
   // Resize board dynamically
@@ -593,7 +558,7 @@ export default function ChessPage() {
         setMoveFrom(hasMoveOptions ? square : "");
         return;
       }
-    } catch (error) {
+    } catch {
       toast.error("Invalid move");
       const hasMoveOptions = getMoveOptions(square as Square);
       setMoveFrom(hasMoveOptions ? square : "");
@@ -667,7 +632,7 @@ export default function ChessPage() {
         toast.error("Invalid move");
         return false;
       }
-    } catch (error) {
+    } catch {
       toast.error("Invalid move");
       return false;
     }
