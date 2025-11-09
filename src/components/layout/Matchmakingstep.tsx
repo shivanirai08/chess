@@ -6,6 +6,7 @@ const avatars = ["/avatar1.svg", "/avatar2.svg", "/avatar3.svg", "/avatar4.svg",
 
 export default function MatchmakingStep({ onMatchFound }: { onMatchFound: () => void }) {
   const [index, setIndex] = useState(0);
+  const [isSearching, setIsSearching] = useState(true);
 
   // advance every 2.5s (1s pause + 1.5s slide)
   useEffect(() => {
@@ -14,6 +15,11 @@ export default function MatchmakingStep({ onMatchFound }: { onMatchFound: () => 
     }, 2500);
     return () => clearInterval(interval);
   }, []);
+
+  const handleMatchFound = () => {
+    setIsSearching(false); // Stop animations
+    onMatchFound(); // Notify parent
+  };
 
   // grab 3 avatars: prev, current, next
   const prev = avatars[(index - 1 + avatars.length) % avatars.length];
@@ -62,7 +68,7 @@ export default function MatchmakingStep({ onMatchFound }: { onMatchFound: () => 
         <span className="mx-2">or</span>
         <hr className="w-24 border-t border-white/20" />
       </div>
-      <Button variant="secondary" className="w-full md:w-md" onClick={()=>{onMatchFound();}}>Challenge a Friend</Button>
+      <Button variant="secondary" className="w-full md:w-md" onClick={()=>{handleMatchFound()}} disabled={!isSearching}>Challenge a Friend</Button>
     </div>
   );
 }

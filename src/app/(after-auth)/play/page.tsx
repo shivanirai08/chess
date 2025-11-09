@@ -35,7 +35,7 @@ export default function PlayPage() {
     }
   };
 
-  // Create socket connection when matchmaking starts
+  // **Create socket connection when matchmaking starts**
   useEffect(() => {
       const token = getToken();
 
@@ -111,7 +111,7 @@ export default function PlayPage() {
     }
   }, [matchFound, countdown, router, gameId]);
 
-  // Start matchmaking api call
+  // **Start matchmaking api call**
   const startMatchmaking = async () => {
     if (!socket) {
       toast.error("Connection not established. Please try again.");

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { X} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/components/ui/Button";
+import { useState } from "react";
 
 type GameResult = "win" | "loss" | "draw" | "abandoned";
 
@@ -12,6 +13,7 @@ interface GameResultModalProps {
   result: GameResult;
   message: string;
   onClose: () => void;
+  isGuest?: boolean;
 }
 
 export default function GameResultModal({
@@ -19,8 +21,10 @@ export default function GameResultModal({
   result,
   message,
   onClose,
+  isGuest = false,
 }: GameResultModalProps) {
   const router = useRouter();
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   const getAccent = () => {
     switch (result) {
@@ -56,7 +60,28 @@ export default function GameResultModal({
 
   const handleBack = () => {
     onClose();
-    router.push("/dashboard");
+    if (isGuest) {
+      router.push("/onboarding");
+    } else {
+      router.push("/dashboard");
+    }
+  };
+
+  const handleReview = () => {
+    if (isGuest) {
+      setShowLoginPrompt(true);
+    } else {
+      onClose();
+      // Stay on the page to review the game
+    }
+  };
+
+  const handleLogin = () => {
+    router.push("/login");
+  };
+
+  const handleSignup = () => {
+    router.push("/signup");
   };
 
   return (
@@ -69,7 +94,7 @@ export default function GameResultModal({
             animate={{ opacity: 0.8 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-gradient-to-b from-[#050510]/90 via-[#0a0a18]/90 to-[#050510]/90 backdrop-blur-md"
+            className="absolute inset-0 bg-gradient-to-b from-[#050510]/90 via-[#0a0a18]/90 to-[#050510]/90 backdrop-blur-md pointer-events-auto"
           />
 
           {/* Modal */}
@@ -78,7 +103,8 @@ export default function GameResultModal({
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: "spring", stiffness: 180, damping: 18 }}
-            className="relative z-10 w-full max-w-md"
+            className="relative z-10 w-full max-w-md pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Outer Glow */}
             <div
@@ -88,7 +114,7 @@ export default function GameResultModal({
               <div className="relative bg-[#0b0f1a]/80 backdrop-blur-sm border border-white/10 rounded-3xl p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
                 {/* Decorative glow orb */}
                 <div
-                  className={`absolute -top-24 left-1/2 -translate-x-1/2 w-[300px] h-[300px] bg-gradient-to-b ${accent.glow} via-transparent to-transparent opacity-25 blur-3xl`}
+                  className={`absolute -top-24 left-1/2 -translate-x-1/2 w-[300px] h-[300px] bg-gradient-to-b ${accent.glow} via-transparent to-transparent opacity-25 blur-3xl pointer-events-none`}
                 ></div>
 
                 {/* Close Button */}
@@ -112,21 +138,48 @@ export default function GameResultModal({
                   {message}
                 </p>
 
+                {/* Login Prompt for Guests */}
+                {showLoginPrompt && isGuest && (
+                  <div className="mt-6 p-4 bg-zinc-900/50 rounded-lg border border-white/10 relative z-10">
+                    <p className="text-sm text-gray-300 mb-4 text-center">
+                      Sign up or log in to access full game review, save your games, and track your progress!
+                    </p>
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={handleSignup}
+                        variant="primary"
+                        className="flex-1"
+                      >
+                        Sign Up
+                      </Button>
+                      <Button
+                        onClick={handleLogin}
+                        variant="secondary"
+                        className="flex-1"
+                      >
+                        Log In
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Buttons */}
-                <div className="mt-8 flex gap-4">
-                  <Button
-                    onClick={handleBack}
-                    variant="primary"
-                  >
-                    Back to Dashboard
-                  </Button>
-                  <Button
-                    onClick={onClose}
-                    variant="secondary"
-                  >
-                    Review Game
-                  </Button>
-                </div>
+                {!showLoginPrompt && (
+                  <div className="mt-8 flex gap-4 relative z-10">
+                    <Button
+                      onClick={handleBack}
+                      variant="primary"
+                    >
+                      {isGuest ? "Play Another Match" : "Back to Dashboard"}
+                    </Button>
+                    <Button
+                      onClick={handleReview}
+                      variant="secondary"
+                    >
+                      Review Game
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

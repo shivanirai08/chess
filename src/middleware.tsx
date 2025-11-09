@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 const AUTH_ROUTES = ["/login", "/signup", "/newpwd", "/resetpwd", "/verifyotp"];
 const PROTECTED_ROUTES = ["/dashboard", "/play"];
+const GUEST_ALLOWED_ROUTES = ["/onboarding", "/chess"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -10,24 +11,38 @@ export function middleware(req: NextRequest) {
   // Get token (from cookies)
   const token = req.cookies.get("auth-token")?.value;
 
-  // Case 1: Authenticated user trying to access auth pages
+  // Case 1: Root path "/" - redirect based on auth status
+  if (pathname === "/") {
+    const url = req.nextUrl.clone();
+    if (token) {
+      url.pathname = "/dashboard";
+    } else {
+      url.pathname = "/login";
+    }
+    return NextResponse.redirect(url);
+  }
+
+  // Case 2: Authenticated user trying to access auth pages (login, signup, etc.)
   if (token && AUTH_ROUTES.some((route) => pathname.startsWith(route))) {
     const url = req.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 
-  // Case 2: Unauthenticated user trying to access protected pages
+  // Case 3: Allow guest routes (onboarding, chess games) without authentication
+  if (GUEST_ALLOWED_ROUTES.some((route) => pathname.startsWith(route))) {
+    return NextResponse.next();
+  }
+
+  // Case 4: Unauthenticated user trying to access protected pages
   if (!token && PROTECTED_ROUTES.some((route) => pathname.startsWith(route))) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  // Case 3: /newpwd, /verifyotp accessible only if routed
-  if (
-    ["/newpwd", "/verifyotp"].some((r) => pathname.startsWith(r))
-  ) {
+  // Case 5: /newpwd, /verifyotp accessible only if routed
+  if (["/newpwd", "/verifyotp"].some((r) => pathname.startsWith(r))) {
     const routed = req.nextUrl.searchParams.get("routed");
     if (!routed && !token) {
       const url = req.nextUrl.clone();
@@ -36,13 +51,14 @@ export function middleware(req: NextRequest) {
     }
   }
 
-  // Allow all other routes (including /chess/[gameId])
+  // Allow all other routes
   return NextResponse.next();
 }
 
 // Define which routes should trigger this middleware
 export const config = {
   matcher: [
+    "/",
     "/login",
     "/signup",
     "/newpwd",
@@ -50,6 +66,7 @@ export const config = {
     "/verifyotp",
     "/dashboard",
     "/play",
+    "/onboarding",
     "/chess/:path*", // handle dynamic chess routes too
   ],
 };

@@ -18,9 +18,13 @@ import { useUserStore } from "@/store/useUserStore";
 import GameResultModal from "@/components/ui/GameResultModal";
 
 export default function ChessPage() {
-  const { user, opponent, setOpponent } = useUserStore();
+  const { setUser, user, opponent, setOpponent } = useUserStore();
   const userId = user.id; // Extract user ID once
+  const guestId = user.guestId;
   const username = user.username;
+
+  // For guest users, use guestId as identifier
+  const playerId = userId || guestId;
   
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -65,22 +69,29 @@ export default function ChessPage() {
   // API Helper Functions
   const fetchGameState = async (gameId: string) => {
     const token = getToken();
-    if (!token) {
+    if (!token && !guestId) {
       toast.error("Authentication required");
       return null;
     }
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/${gameId}`, {
+      let response;
+      if(token){ response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/${gameId}`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
         },
+      });}else if(guestId){
+         response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/${gameId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
-
-      if (!response.ok) {
-        if (response.status === 404) {
+      }
+      if (!response?.ok) {
+        if (response?.status === 404) {
           toast.error("Game not found");
         } else {
           toast.error("Failed to fetch game state");
@@ -127,9 +138,6 @@ export default function ChessPage() {
       }
 
       const data = await response.json();
-      // toast.success("You resigned from the game");
-      // setGameResult({ type: "loss", message: "You resigned from the game" });
-      // setIsResultModalOpen(true);
       return data;
     } catch (error) {
       console.error("Error resigning:", error);
@@ -141,13 +149,13 @@ export default function ChessPage() {
   // Helper to set game result
   const setGameResultHelper = (result: string, whitePlayerId: string, blackPlayerId: string, whitePlayerName: string, blackPlayerName: string) => {
     if (result === "white_wins") {
-      const isWinner = whitePlayerId === userId;
+      const isWinner = whitePlayerId === playerId;
       setGameResult({
         type: isWinner ? "win" : "loss",
         message: isWinner ? "You win!" : `${whitePlayerName} wins!`,
       });
     } else if (result === "black_wins") {
-      const isWinner = blackPlayerId === userId;
+      const isWinner = blackPlayerId === playerId;
       setGameResult({
         type: isWinner ? "win" : "loss",
         message: isWinner ? "You win!" : `${blackPlayerName} wins!`,
@@ -157,12 +165,16 @@ export default function ChessPage() {
     } else if (result === "abandoned") {
       setGameResult({ type: "abandoned", message: "Game Abandoned" });
     }
+    // Clear guestId only for guest users
+    if (guestId) {
+      setUser({ ...user, guestId: null });
+    }
   };
 
   // Fetch initial game state
   useEffect(() => {
     const gameId = getGameIdFromPath();
-    if (!gameId || !userId) return;
+    if (!gameId || !playerId) return;
 
     const loadGameState = async () => {
       const gameData = await fetchGameState(gameId);
@@ -170,13 +182,14 @@ export default function ChessPage() {
         const { game } = gameData;
 
         console.log("Game data received:", game);
+        console.log("Current playerId:", playerId);
 
         // Determine player color and set board orientation
-        if (game.whitePlayerId === userId) {
+        if (game.whitePlayerId === playerId) {
           setPlayerColor("white");
           setBoardOrientation("white");
           console.log("Player is WHITE, board orientation: white");
-        } else if (game.blackPlayerId === userId) {
+        } else if (game.blackPlayerId === playerId) {
           setPlayerColor("black");
           setBoardOrientation("black");
           console.log("Player is BLACK, board orientation: black");
@@ -223,12 +236,12 @@ export default function ChessPage() {
 
         // **SINGLE PLACE TO SET OPPONENT**
         if (game.whitePlayerName && game.blackPlayerName) {
-          const isWhite = game.whitePlayerId === userId;
+          const isWhite = game.whitePlayerId === playerId;
           const opponentData = {
             username: isWhite ? game.blackPlayerName : game.whitePlayerName,
             userId: isWhite ? game.blackPlayerId : game.whitePlayerId,
             isGuest: game.isGuestGame || false,
-            avatar: isWhite ? "/avatar8.svg" : "/avatar8.svg" // You can add avatar logic here
+            avatar: isWhite ? "/avatar8.svg" : "/avatar7.svg" // You can add avatar logic here
           };
 
           // Only set if opponent is different from current user
@@ -246,6 +259,10 @@ export default function ChessPage() {
             game.whitePlayerName,
             game.blackPlayerName
           );
+          // Clear guestId only for guest users
+          if (guestId) {
+            setUser({ ...user, guestId: null });
+          }
           setIsResultModalOpen(true);
         }
       }
@@ -253,13 +270,13 @@ export default function ChessPage() {
 
     loadGameState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, username]); // Added dependencies
+  }, [playerId, username]); // Added dependencies
 
   // Socket connection
   useEffect(() => {
     const token = getToken();
-    if (!token) {
-      toast.error("Login required to connect to game");
+    if (!token && !guestId) {
+      toast.error("Authentication required for game");
       return;
     }
 
@@ -267,10 +284,17 @@ export default function ChessPage() {
     if (!gameId) return;
 
     console.log("Connecting to socket...");
-    const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
+    let newSocket: Socket;
+    if(token){ 
+      newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
       auth: { token },
       transports: ["websocket", "polling"], // Prefer WebSocket, fallback to polling
-    });
+    });}
+    else {
+      newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
+      auth: { guestId : guestId },
+      transports: ["websocket", "polling"], // Prefer WebSocket, fallback to polling
+    });}
 
     newSocket.on("connect", () => {
       console.log("✅ Socket connected:", newSocket.id);
@@ -318,13 +342,13 @@ export default function ChessPage() {
 
       if (data?.result) {
       if (data.result == "white_wins"){
-        const isWinner = data.winner === userId;
+        const isWinner = data.winner === playerId;
         setGameResult({
           type: isWinner ? "win" : "loss",
           message: isWinner ? "Checkmate! You win!" : "Checkmate! You lose!",
         });
       } else if (data.result == "black_wins"){
-        const isWinner = data.winner === userId;
+        const isWinner = data.winner === playerId;
         setGameResult({
           type: isWinner ? "win" : "loss",
           message: isWinner ? "Checkmate! You win!" : "Checkmate! You lose!",
@@ -339,12 +363,27 @@ export default function ChessPage() {
     newSocket.on("game-resigned", (data) => {
       console.log("game-resigned event received:", data);
       setGameStatus("completed");
-      setGameResult({
-        type: "win",
-        message: "Opponent resigned! You win!",
-      });
+
+      // Check if the data contains information about who resigned
+      if (data?.resignedPlayerId) {
+        const didIResign = data.resignedPlayerId === playerId;
+        setGameResult({
+          type: didIResign ? "loss" : "win",
+          message: didIResign ? "You resigned from the game" : "Opponent resigned! You win!",
+        });
+        if (!didIResign) {
+          toast.success("Opponent resigned! You win!");
+        }
+      } else {
+        // Fallback if backend doesn't send resignedPlayerId
+        // This assumes the resign event is only sent to the opponent
+        setGameResult({
+          type: "win",
+          message: "Opponent resigned! You win!",
+        });
+        toast.success("Opponent resigned! You win!");
+      }
       setIsResultModalOpen(true);
-      toast.success("Opponent resigned! You win!");
     });
 
     newSocket.on("players-connected", (data) => {
@@ -380,7 +419,7 @@ export default function ChessPage() {
       newSocket.off("move-error");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, username]); // Added dependencies
+  }, [playerId, username]); // Added dependencies
 
   // Resize board dynamically
   useEffect(() => {
@@ -936,6 +975,7 @@ export default function ChessPage() {
           result={gameResult.type}
           message={gameResult.message}
           onClose={() => setIsResultModalOpen(false)}
+          isGuest={!!guestId}
         />
       )}
     </div>
