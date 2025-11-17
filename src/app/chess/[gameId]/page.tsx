@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import Cookies from "js-cookie";
 import { useUserStore } from "@/store/useUserStore";
 import GameResultModal from "@/components/ui/GameResultModal";
+import ChatPanel, { Message } from "@/components/ui/ChatPanel";
 
 export default function ChessPage() {
   const { setUser, user, opponent, setOpponent } = useUserStore();
@@ -25,7 +26,7 @@ export default function ChessPage() {
 
   // For guest users, use guestId as identifier
   const playerId = userId || guestId;
-  
+
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [showAnimations, setShowAnimations] = useState(true);
@@ -39,6 +40,8 @@ export default function ChessPage() {
     type: "win" | "loss" | "draw" | "abandoned";
     message: string;
     } | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
 
   // Game setup
   const chessGameRef = useRef(new Chess());
@@ -144,6 +147,11 @@ export default function ChessPage() {
       toast.error("Network error while resigning");
       return null;
     }
+  };
+
+  // Chat message handler
+  const handleAddChatMessage = (message: Message) => {
+    setChatMessages((prev) => [...prev, message]);
   };
 
   // Helper to set game result
@@ -297,8 +305,8 @@ export default function ChessPage() {
     });}
 
     newSocket.on("connect", () => {
-      console.log("✅ Socket connected:", newSocket.id);
-      console.log("🎮 Joining game room:", gameId);
+      console.log("Socket connected:", newSocket.id);
+      console.log("Joining game room:", gameId);
       newSocket.emit("join-game", gameId);
     });
 
@@ -403,6 +411,26 @@ export default function ChessPage() {
       toast.error(err.message || "Invalid move");
     });
 
+    newSocket.on("chat-message", (data) => {
+      console.log("Chat message received:", data);
+      if (data?.message) {
+        const newMessage: Message = {
+          id: `${Date.now()}-${Math.random()}`,
+          sender: "opponent",
+          message: data.message,
+          timestamp: new Date(),
+        };
+        handleAddChatMessage(newMessage);
+
+        // Show toast notification if chat is closed
+        if (!isChatOpen) {
+          toast.info(`${opponent?.username || "Opponent"}: ${data.message}`, {
+            duration: 3000,
+          });
+        }
+      }
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -417,6 +445,7 @@ export default function ChessPage() {
       newSocket.off("players-connected");
       newSocket.off("error");
       newSocket.off("move-error");
+      newSocket.off("chat-message");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId, username]); // Added dependencies
@@ -428,9 +457,12 @@ export default function ChessPage() {
       setIsDesktop(window.innerWidth >= 1024);
       const width = window.innerWidth - 16;
 
-      if (window.innerWidth <= 1024) {
+      if (window.innerWidth <= 700) {
         setBoardSize(width);
-      } else {
+      } else if( window.innerWidth <= 1024){
+        
+      }
+      else{
         const height = window.innerHeight - 90;
         const width = window.innerWidth - 40;
         setBoardSize(Math.min(height, width));
@@ -812,6 +844,13 @@ export default function ChessPage() {
           <Button
             size="small"
             variant="secondary"
+            onClick={() => setIsChatOpen(!isChatOpen)}
+          >
+            Chat
+          </Button>
+          <Button
+            size="small"
+            variant="secondary"
             onClick={() => setShowAnimations(!showAnimations)}
           >
             Draw
@@ -829,7 +868,7 @@ export default function ChessPage() {
       </div>
 
       <div
-        className="flex gap-2 justify-center items-start flex-col lg:flex-row"
+        className="flex gap-2 justify-center items-start flex-col lg:flex-row relative"
         style={isDesktop ? { height: `${boardSize}px` } : {}}
       >
         {/* LEFT: CHESSBOARD */}
@@ -968,6 +1007,17 @@ export default function ChessPage() {
             </button>
           </div>
         </div>
+
+        {/* CHAT PANEL */}
+        <ChatPanel
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          socket={socket}
+          gameId={getGameIdFromPath()}
+          opponentName={opponent?.username || "Opponent"}
+          messages={chatMessages}
+          onAddMessage={handleAddChatMessage}
+        />
       </div>
       {gameResult && (
         <GameResultModal

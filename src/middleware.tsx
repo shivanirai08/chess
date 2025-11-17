@@ -11,14 +11,10 @@ export function middleware(req: NextRequest) {
   // Get token (from cookies)
   const token = req.cookies.get("auth-token")?.value;
 
-  // Case 1: Root path "/" - redirect based on auth status
-  if (pathname === "/") {
+  // Case 1: Root path "/" - redirect authenticated users to dashboard
+  if (pathname === "/" && token) {
     const url = req.nextUrl.clone();
-    if (token) {
-      url.pathname = "/dashboard";
-    } else {
-      url.pathname = "/login";
-    }
+    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

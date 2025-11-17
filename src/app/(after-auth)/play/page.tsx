@@ -61,7 +61,7 @@ export default function PlayPage() {
       });
 
       // Game events
-      newSocket.on('matchmaking-found', (data) => {
+      newSocket.once('matchmaking-found', (data) => {
         console.log('Match found!', data.gameId);
         setGameId(data.gameId);
         console.log("Opponent data:", data.opponent);
