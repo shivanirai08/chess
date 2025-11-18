@@ -53,6 +53,10 @@ export default function ChessPage() {
   const [boardSize, setBoardSize] = useState(400);
   const [promotionMove, setPromotionMove] = useState<{ from: Square; to: Square } | null>(null);
 
+  // Premove state management
+  const [premoves, setPremoves] = useState<PieceDropHandlerArgs[]>([]);
+  const premovesRef = useRef<PieceDropHandlerArgs[]>([]);
+
   // Helper functions
   const getGameIdFromPath = () => {
     if (typeof window === "undefined") return null;
@@ -338,6 +342,69 @@ export default function ChessPage() {
           }
         }
         updateMovesFromHistory();
+
+        // Execute premove if one exists
+        if (premovesRef.current.length > 0) {
+          const nextPremove = premovesRef.current[0];
+          premovesRef.current.splice(0, 1);
+
+          // Wait for animation to complete
+          setTimeout(() => {
+            // Try to execute the premove with validation
+            try {
+              const possiblemoves = chessGame.moves({
+                square: nextPremove.sourceSquare as Square,
+                verbose: true,
+              });
+
+              const foundMove = possiblemoves.find(
+                (m) => m.from === nextPremove.sourceSquare && m.to === nextPremove.targetSquare
+              );
+
+              if (foundMove) {
+                // Premove is valid, execute it
+                const moveData = {
+                  from: nextPremove.sourceSquare as Square,
+                  to: nextPremove.targetSquare as Square,
+                  promotion: "q" as const,
+                };
+
+                const premoveResult = chessGame.move(moveData);
+                if (premoveResult) {
+                  setChessPosition(chessGame.fen());
+                  updateMovesFromHistory();
+
+                  // Send premove to server
+                  const gameId = getGameIdFromPath();
+                  if (gameId && newSocket) {
+                    newSocket.emit("make-move", { gameId, move: moveData });
+                  }
+                } else {
+                  // Premove failed, clear all premoves
+                  premovesRef.current = [];
+                  toast.error("Premove is no longer valid");
+                }
+              } else {
+                // Premove is invalid, clear all premoves
+                premovesRef.current = [];
+                toast.error("Premove is no longer valid");
+              }
+
+              // Update premoves state
+              setPremoves([...premovesRef.current]);
+
+              // Disable animations briefly while clearing visual premoves
+              setShowAnimations(false);
+              setTimeout(() => {
+                setShowAnimations(true);
+              }, 50);
+            } catch (error) {
+              console.error("Error executing premove:", error);
+              premovesRef.current = [];
+              setPremoves([]);
+            }
+          }, 300);
+        }
       } catch (e) {
         console.error("Error applying opponent move", e);
         toast.error("Failed to apply opponent's move");
@@ -518,17 +585,7 @@ export default function ChessPage() {
       return false;
     }
 
-    // Check if it's the player's turn
-    const currentTurn = chessGame.turn(); // 'w' or 'b'
-    const isPlayerTurn =
-      (playerColor === "white" && currentTurn === "w") ||
-      (playerColor === "black" && currentTurn === "b");
-
-    if (!isPlayerTurn) {
-      return false;
-    }
-
-    // Only allow dragging pieces of the player's color
+    // Allow dragging pieces of the player's color (for both regular moves and premoves)
     const pieceColor = piece.pieceType[0]; // 'w' or 'b'
     return (
       (playerColor === "white" && pieceColor === "w") ||
@@ -641,18 +698,70 @@ export default function ChessPage() {
   }
 
   // Handle drag drop
-  function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean {
+  function onPieceDrop({ sourceSquare, targetSquare, piece }: PieceDropHandlerArgs): boolean {
     if (gameStatus === "completed") {
       return false;
     }
     if (currentMoveIndex !== moves.length - 1) return false;
-    if (!targetSquare) return false;
+    if (!targetSquare || sourceSquare === targetSquare) return false;
 
     // Check if it's the player's turn
     const currentTurn = chessGame.turn();
     const isPlayerTurn =
       (playerColor === "white" && currentTurn === "w") ||
       (playerColor === "black" && currentTurn === "b");
+
+    // Check if this is a premove (piece isn't the color of the current player's turn)
+    const pieceColor = piece.pieceType[0]; // 'w' or 'b'
+    if (currentTurn !== pieceColor) {
+      // This is a premove - validate that it would be legal
+      // Only allow premoves for the player's own pieces
+      const canPremove =
+        (playerColor === "white" && pieceColor === "w") ||
+        (playerColor === "black" && pieceColor === "b");
+
+      if (!canPremove) {
+        return false;
+      }
+
+      // Validate the premove by checking if it would be legal
+      // We can't fully validate without knowing the opponent's next move,
+      // but we can do basic validation
+      const testGame = new Chess(chessGame.fen());
+
+      // Try to make a dummy move for the opponent to switch turns
+      const opponentMoves = testGame.moves({ verbose: true });
+      if (opponentMoves.length > 0) {
+        // Make any legal opponent move to switch turns
+        testGame.move(opponentMoves[0]);
+
+        // Now check if our premove would be legal
+        const possiblePremoves = testGame.moves({
+          square: sourceSquare as Square,
+          verbose: true,
+        });
+
+        const isValidPremove = possiblePremoves.some(
+          (m) => m.from === sourceSquare && m.to === targetSquare
+        );
+
+        if (!isValidPremove) {
+          toast.error("Invalid premove");
+          return false;
+        }
+      }
+
+      // Add to premoves list (allow multiple premoves)
+      premovesRef.current.push({
+        sourceSquare,
+        targetSquare,
+        piece
+      });
+      setPremoves([...premovesRef.current]);
+      toast.info(`Premove ${premovesRef.current.length} set`);
+      // Return true to keep piece in premoved position visually
+      return true;
+    }
 
     if (!isPlayerTurn) {
       return false;
@@ -706,6 +815,20 @@ export default function ChessPage() {
     } catch {
       toast.error("Invalid move");
       return false;
+    }
+  }
+
+  // Clear premoves on right click
+  function onSquareRightClick() {
+    if (premovesRef.current.length > 0) {
+      premovesRef.current = [];
+      setPremoves([]);
+
+      // Disable animations briefly while clearing premoves
+      setShowAnimations(false);
+      setTimeout(() => {
+        setShowAnimations(true);
+      }, 50);
     }
   }
 
@@ -808,13 +931,29 @@ export default function ChessPage() {
     setCurrentMoveIndex(index);
   }
 
+  // Combine option squares with premove highlights
+  const combinedSquareStyles: Record<string, React.CSSProperties> = { ...optionSquares };
+
+  // Add red highlights for premoves
+  for (const premove of premoves) {
+    if (premove.targetSquare) {
+      combinedSquareStyles[premove.sourceSquare] = {
+        backgroundColor: 'rgba(255, 100, 100, 0.4)'
+      };
+      combinedSquareStyles[premove.targetSquare] = {
+        backgroundColor: 'rgba(255, 100, 100, 0.4)'
+      };
+    }
+  }
+
   const chessboardOptions = {
     position: chessPosition,
     onPieceDrop,
     onSquareClick,
+    onSquareRightClick,
     canDragPiece,
     boardOrientation: boardOrientation,
-    squareStyles: optionSquares,
+    squareStyles: combinedSquareStyles,
     id: "multiplayer-chess",
     showAnimations,
     boardStyle: {
