@@ -32,12 +32,9 @@ export default function SignUp() {
 
 const rules = [
   { label: "At least 6 characters", valid: password.length >= 6 },
+  { label: "One uppercase letter", valid: /[A-Z]/.test(password) },
+  { label: "One lowercase letter", valid: /[a-z]/.test(password) },
   { label: "One number", valid: /\d/.test(password) },
-  { label: "One letter", valid: /[A-Za-z]/.test(password) },
-  {
-    label: "One special character",
-    valid: /[!@#$%^&*(),.?":{}|<>]/.test(password),
-  },
 ];
 
 const validate = () => {

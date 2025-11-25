@@ -136,9 +136,8 @@ export default function ChessPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
         if (response.status === 400) {
-          toast.error(errorData.message || "Cannot resign from this game");
+          toast.error("Cannot resign from this game");
         } else if (response.status === 404) {
           toast.error("Game not found");
         } else {
@@ -443,7 +442,6 @@ export default function ChessPage() {
     });
 
     newSocket.on("game-resigned", (data) => {
-      console.log("game-resigned event received:", data);
       setGameStatus("completed");
 
       // Check if the data contains information about who resigned
@@ -984,24 +982,11 @@ export default function ChessPage() {
     const gameId = getGameIdFromPath();
     if (!gameId) return;
 
-    console.log("Resigning from game:", gameId);
-
-    // Call API to resign
-    const result = await resignGame(gameId);
-    console.log("Resign API response:", result);
-
-    // Also emit via WebSocket
+    // Only emit via WebSocket (backend socket handler will handle everything)
     if (socket && socket.connected) {
-      console.log("Emitting resign event via socket");
       socket.emit("resign", gameId);
-      console.log("Resign event emitted");
     } else {
-      console.error("Socket not connected, cannot emit resign event");
-    }
-
-    // Update game status
-    if (result) {
-      setGameStatus("completed");
+      toast.error("Not connected to game server");
     }
   }
 
@@ -1138,7 +1123,7 @@ export default function ChessPage() {
           <Button
             size="small"
             variant="destructive"
-            onClick={() => handleResign()}
+            onClick={handleResign}
             className="px-2 py-1"
             disabled={gameStatus === "completed"}
           >

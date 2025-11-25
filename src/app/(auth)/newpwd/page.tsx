@@ -26,9 +26,9 @@ export default function ChangePassword() {
   // Password validation checks
   const passwordChecks = {
     length: password.length >= 6,
-    letter: /[A-Za-z]/.test(password),
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
     number: /\d/.test(password),
-    special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
   };
 
   const validate = () => {
@@ -147,12 +147,16 @@ export default function ChangePassword() {
                     valid: passwordChecks.length,
                   },
                   {
-                    label: "One number and one letter",
-                    valid: passwordChecks.number && passwordChecks.letter,
+                    label: "One uppercase letter",
+                    valid: passwordChecks.uppercase,
                   },
                   {
-                    label: "One special character",
-                    valid: passwordChecks.special,
+                    label: "One lowercase letter",
+                    valid: passwordChecks.lowercase,
+                  },
+                  {
+                    label: "One number",
+                    valid: passwordChecks.number,
                   },
                 ].map((check, i) => (
                   <div

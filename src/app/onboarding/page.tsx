@@ -19,6 +19,7 @@ export default function Onboarding() {
   const { setUser, user, setOpponent, opponent, clearUser } = useUserStore();
   const [gameId, setGameId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [socketId, setSocketId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState("/avatar7.svg");
@@ -26,6 +27,7 @@ export default function Onboarding() {
   const [countdown, setCountdown] = useState(5);
   const [direction, setDirection] = useState<"left" | "right">("right");
   const [socketConnected, setSocketConnected] = useState(false);
+  const [connectingSocket, setConnectingSocket] = useState(false);
   const avatars = [
     "/avatar1.svg",
     "/avatar2.svg",
@@ -54,87 +56,112 @@ export default function Onboarding() {
     }
   }, []);
 
-  //**websocket connection**
-  useEffect(() => {
+  //**websocket connection function**
+  const connectSocket = (guestId: string) => {
+    setConnectingSocket(true);
+    console.log("Connecting socket with Guest ID:", guestId);
 
-      if(!user.guestId) {
-        setSocketConnected(false);
-        return;
+    const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
+      auth: { guestId },
+      transports: ["websocket", "polling"],
+    });
+
+    // Connection events
+    newSocket.on("connect", () => {
+      console.log("Socket connected:", newSocket.id);
+      setSocketId(newSocket.id); // Store socket ID
+      setSocketConnected(true);
+      setConnectingSocket(false);
+      toast.success("Connected to game server");
+    });
+
+    newSocket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
+      setSocketConnected(false);
+      setConnectingSocket(false);
+      toast.error(`Connection error: ${error.message}`);
+    });
+
+    // Game events
+    newSocket.on('matchmaking-found', (data) => {
+      console.log('Match found!', data.gameId);
+      setGameId(data.gameId);
+      console.log("Opponent data:", data.opponent);
+      setOpponent(data.opponent);
+      setMatchFound(true);
+      toast.success("Match found!");
+    });
+
+    newSocket.on("error", (error: { message: string }) => {
+      console.error("Socket error:", error);
+      toast.error(error.message);
+    });
+
+    newSocket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
+      setSocketConnected(false);
+      if (reason === "io server disconnect") {
+        toast.error("Disconnected from server");
       }
-      console.log("Guest ID:", user.guestId);
+    });
 
-      const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
-        auth : { guestId : user.guestId },
-        transports: ["websocket", "polling"], // Prefer WebSocket, fallback to polling
-      });
+    setSocket(newSocket);
+  };
 
-      // Connection events
-      newSocket.on("connect", () => {
-        console.log("Socket connected:", newSocket.id);
-        setSocketConnected(true);
-        toast.success("Connected to game server");
-      });
-
-      newSocket.on("connect_error", (error) => {
-        console.error("Socket connection error:", error);
-        setSocketConnected(false);
-        toast.error(`Connection error: ${error.message}`);
-      });
-
-      // Game events
-      newSocket.on('matchmaking-found', (data) => {
-        console.log('Match found!', data.gameId);
-        setGameId(data.gameId);
-        console.log("Opponent data:", data.opponent);
-        setOpponent(data.opponent);
-        setMatchFound(true);
-        toast.success("Match found!");
-      });
-
-      newSocket.on("error", (error: { message: string }) => {
-        console.error("Socket error:", error);
-        toast.error(error.message);
-      });
-
-      newSocket.on("disconnect", (reason) => {
-        console.log("Socket disconnected:", reason);
-        setSocketConnected(false);
-        if (reason === "io server disconnect") {
-          // The server has forcefully disconnected
-          toast.error("Disconnected from server");
-        }
-      });
-
-      setSocket(newSocket);
-
-      // Cleanup on unmount or step change
-      return () => {
-        console.log("Cleaning up socket");
-        setSocketConnected(false);
-        newSocket.off("connect");
-        newSocket.off("connect_error");
-        newSocket.off("matchmaking-found");
-        newSocket.off("error");
-        newSocket.off("disconnect");
-        newSocket.disconnect();
-      };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, user.guestId]);
-
-  // **Matchmaking-guest API call**
-  const matchmaking = async () => {
+  // **Step 1: Register guest and connect socket**
+  const handleAvatarNext = async () => {
     try {
-      const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/matchmaking/join-guest`, {
+      // Call register endpoint to get guestId
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/guest/register`, {
         guestName: name,
       });
-      const data = await response.data;
+      const { guestId } = response.data;
+
+      // Store guestId in user state
       clearUser();
-      setUser({ username: name || "You", avatar, guestId: data.guestId });
-      // Advance to step 3 immediately
+      setUser({ username: name || "You", avatar, guestId });
+
+      // Connect socket with guestId
+      connectSocket(guestId);
+
+      // Proceed to next step
+      next();
+    } catch (error) {
+      console.error("Error registering guest:", error);
+      toast.error("Failed to register. Please try again.");
+    }
+  };
+
+  // **Step 2: Join matchmaking with socketId**
+  const matchmaking = async () => {
+    // Verify socket is connected
+    if (!socketConnected || !socketId) {
+      toast.error("Please wait for connection to game server...");
+      return;
+    }
+
+    if (!user.guestId) {
+      toast.error("Guest ID not found. Please go back and try again.");
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/matchmaking/join-guest`, {
+        guestId: user.guestId,
+        socketId: socketId,
+        guestName: name,
+      });
+      const data = response.data;
+
+      // Advance to step 3 (matchmaking screen)
       setStep(3);
     } catch (error) {
-      console.error("Error fetching guest ID:", error);
-      toast.error("Failed to start matchmaking");
+      console.error("Error joining matchmaking:", error);
+      if (axios.isAxiosError(error) && error.response?.status === 400) {
+        toast.error(error.response.data.message || "Socket not connected");
+      } else {
+        toast.error("Failed to start matchmaking");
+      }
     }
   };
 
@@ -268,14 +295,20 @@ export default function Onboarding() {
                     })}
                   </div>
                   <Button
-                    onClick={next}
-                    disabled={!name.trim().length}
+                    onClick={handleAvatarNext}
+                    disabled={!name.trim().length || connectingSocket}
                     type="submit"
                     variant="primary"
                     className="md:w-md w-full"
                   >
-                    Next
+                    {connectingSocket ? "Connecting..." : "Next"}
                   </Button>
+                  {connectingSocket && (
+                    <p className="text-sm text-gray-400">Connecting to game server...</p>
+                  )}
+                  {socketConnected && (
+                    <p className="text-sm text-green-400">✓ Connected to game server</p>
+                  )}
                 </div>
               </div>
             )}
