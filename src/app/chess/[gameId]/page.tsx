@@ -334,7 +334,16 @@ export default function ChessPage() {
     });
 
     newSocket.on("move-made", (data) => {
-      if(data?.player === username) return; // Ignore your own move
+      console.log("Move received:", {
+        dataPlayer: data?.player,
+        username,
+        guestId,
+        isOwnMove: data?.player === username || data?.player === guestId
+      });
+      if(data?.player === username || data?.player === guestId) {
+        console.log("Ignoring own move");
+        return; // Ignore your own move
+      }
       try {
         // Apply opponent's move to actual board
         if (data?.move) {
@@ -346,65 +355,119 @@ export default function ChessPage() {
         }
         updateMovesFromHistory();
 
-        // Execute premove if one exists
+        // PREMOVE EXECUTION - strict validation at execution time (per chess.com spec)
         if (premovesRef.current.length > 0) {
           const nextPremove = premovesRef.current[0];
 
-          // Validate the premove is still legal
-          const possiblemoves = chessGame.moves({
-            square: nextPremove.sourceSquare as Square,
-            verbose: true,
+          console.log("Attempting to execute premove:", {
+            from: nextPremove.sourceSquare,
+            to: nextPremove.targetSquare,
+            piece: nextPremove.piece.pieceType,
+            currentFen: chessGame.fen()
           });
 
-          const foundMove = possiblemoves.find(
+          // Check if piece still exists at source square
+          const pieceAtSource = chessGame.get(nextPremove.sourceSquare as Square);
+
+          if (!pieceAtSource) {
+            console.log("Premove discarded: piece no longer exists at source");
+            premovesRef.current.shift();
+            setPremoves([...premovesRef.current]);
+            animatePremovesBack();
+            toast.info("Premove canceled - piece was captured");
+            setPreviewPosition(null);
+            return;
+          }
+
+          // Get ALL legal moves for the current position
+          const legalMoves = chessGame.moves({ verbose: true });
+
+          // Check if this exact move (from->to) is in the legal moves
+          const foundMove = legalMoves.find(
             (m) => m.from === nextPremove.sourceSquare && m.to === nextPremove.targetSquare
           );
 
           if (foundMove) {
-            // Premove is valid, execute it immediately (no animation needed - already shown)
-            const moveData = {
-              from: nextPremove.sourceSquare as Square,
-              to: nextPremove.targetSquare as Square,
-              promotion: "q" as const,
-            };
-
-            const premoveResult = chessGame.move(moveData);
-            if (premoveResult) {
-              // Remove executed premove from array
+            // PREMOVE IS LEGAL - execute it
+            // Guard against a missing targetSquare (can be null)
+            const targetSquare = nextPremove.targetSquare;
+            if (!targetSquare) {
+              console.log("Premove discarded: missing target square", {
+                source: nextPremove.sourceSquare,
+                target: nextPremove.targetSquare
+              });
               premovesRef.current.shift();
               setPremoves([...premovesRef.current]);
-
-              // Update board to actual position
-              setChessPosition(chessGame.fen());
-              updateMovesFromHistory();
-
-              // If there are remaining premoves, recalculate preview; otherwise clear it
-              if (premovesRef.current.length > 0) {
-                // Recalculate preview position from remaining premoves
-                const newPreview = recalculatePreviewPosition(
-                  chessGame.fen(),
-                  premovesRef.current
-                );
-                setPreviewPosition(newPreview);
-              } else {
-                // No more premoves, clear preview
-                setPreviewPosition(null);
-              }
-
-              // Send premove to server
-              const gameId = getGameIdFromPath();
-              if (gameId && newSocket) {
-                newSocket.emit("make-move", { gameId, move: moveData });
-              }
-            } else {
-              // Premove failed, animate pieces back
               animatePremovesBack();
-              toast.error("Premove is no longer valid");
+              toast.info("Premove canceled - invalid target");
+              setPreviewPosition(null);
+            } else {
+              const isPawn = nextPremove.piece.pieceType.toLowerCase().includes('p');
+              const targetRank = targetSquare[1];
+              const isPromotion = isPawn && (targetRank === '8' || targetRank === '1');
+
+              const moveData: any = {
+                from: nextPremove.sourceSquare as Square,
+                to: targetSquare as Square,
+              };
+
+              // Only add promotion for actual promotion moves (auto-queen per spec)
+              if (isPromotion) {
+                moveData.promotion = "q";
+              }
+
+              const premoveResult = chessGame.move(moveData);
+
+              if (premoveResult) {
+                console.log("Premove executed successfully:", moveData);
+
+                // Remove executed premove from queue
+                premovesRef.current.shift();
+                setPremoves([...premovesRef.current]);
+
+                // Update board to actual position
+                setChessPosition(chessGame.fen());
+                updateMovesFromHistory();
+
+                // If there are remaining premoves, recalculate preview; otherwise clear it
+                if (premovesRef.current.length > 0) {
+                  const newPreview = recalculatePreviewPosition(
+                    chessGame.fen(),
+                    premovesRef.current
+                  );
+                  setPreviewPosition(newPreview);
+                } else {
+                  setPreviewPosition(null);
+                }
+
+                // Send premove to server
+                const gameId = getGameIdFromPath();
+                if (gameId && newSocket) {
+                  newSocket.emit("make-move", { gameId, move: moveData });
+                }
+              } else {
+                // This shouldn't happen if foundMove exists, but handle it
+                console.log("Premove execution failed unexpectedly");
+                premovesRef.current.shift();
+                setPremoves([...premovesRef.current]);
+                animatePremovesBack();
+                toast.error("Premove failed");
+              }
             }
           } else {
-            // Premove is invalid, animate pieces back
+            // PREMOVE IS ILLEGAL - discard it (per chess.com spec)
+            console.log("Premove discarded: illegal in current position", {
+              attempted: `${nextPremove.sourceSquare}->${nextPremove.targetSquare}`,
+              legalFromSource: legalMoves
+                .filter(m => m.from === nextPremove.sourceSquare)
+                .map(m => `${m.from}->${m.to}`)
+            });
+
+            premovesRef.current.shift();
+            setPremoves([...premovesRef.current]);
             animatePremovesBack();
-            toast.error("Premove is no longer valid");
+            toast.info("Premove canceled - no longer legal");
+            setPreviewPosition(null);
           }
         } else {
           // No premoves, clear preview to show opponent's move
@@ -686,12 +749,14 @@ export default function ChessPage() {
           socket.emit("make-move", { gameId, move: moveData });
         }
       } else {
+        console.log("Square click move rejected:", { from: moveFrom, to: square });
         toast.error("Invalid move");
         const hasMoveOptions = getMoveOptions(square as Square);
         setMoveFrom(hasMoveOptions ? square : "");
         return;
       }
-    } catch {
+    } catch (e) {
+      console.log("Square click move error:", e, { from: moveFrom, to: square });
       toast.error("Invalid move");
       const hasMoveOptions = getMoveOptions(square as Square);
       setMoveFrom(hasMoveOptions ? square : "");
@@ -764,6 +829,181 @@ export default function ChessPage() {
     }
   }
 
+  // Check if a move is pseudo-legal (follows piece movement rules, ignores check)
+  function isPseudoLegal(from: string, to: string, piece: string, board: Chess): boolean {
+    const fromSquare = from as Square;
+    const toSquare = to as Square;
+
+    console.log("isPseudoLegal called:", { from, to, piece });
+
+    const pieceType = piece.toLowerCase().charAt(1); // 'p', 'n', 'b', 'r', 'q', 'k'
+    const pieceColor = piece.charAt(0); // 'w' or 'b'
+
+    console.log("Extracted:", { pieceType, pieceColor });
+
+    const fromFile = from.charCodeAt(0) - 97; // a=0, b=1, etc.
+    const fromRank = parseInt(from[1]) - 1; // 1=0, 2=1, etc.
+    const toFile = to.charCodeAt(0) - 97;
+    const toRank = parseInt(to[1]) - 1;
+
+    const fileDiff = Math.abs(toFile - fromFile);
+    const rankDiff = Math.abs(toRank - fromRank);
+    const fileDir = toFile - fromFile;
+    const rankDir = toRank - fromRank;
+
+    const targetPiece = board.get(toSquare);
+    const isCapture = targetPiece && targetPiece.color !== pieceColor;
+    const isEmpty = !targetPiece;
+
+    console.log("Move analysis:", {
+      fromFile, fromRank, toFile, toRank,
+      fileDiff, rankDiff, fileDir, rankDir,
+      targetPiece: targetPiece?.type,
+      isCapture, isEmpty
+    });
+
+    // Helper to check if path is clear for sliding pieces
+    const isPathClear = (fromF: number, fromR: number, toF: number, toR: number): boolean => {
+      const fStep = toF === fromF ? 0 : (toF > fromF ? 1 : -1);
+      const rStep = toR === fromR ? 0 : (toR > fromR ? 1 : -1);
+
+      let f = fromF + fStep;
+      let r = fromR + rStep;
+
+      while (f !== toF || r !== toR) {
+        const sq = String.fromCharCode(97 + f) + (r + 1);
+        if (board.get(sq as Square)) return false;
+        f += fStep;
+        r += rStep;
+      }
+      return true;
+    };
+
+    switch (pieceType) {
+      case 'p': // Pawn
+        const direction = pieceColor === 'w' ? 1 : -1;
+        const startRank = pieceColor === 'w' ? 1 : 6;
+
+        console.log("Pawn validation:", { direction, startRank, fileDir, rankDir });
+
+        // Forward move (1 square)
+        if (fileDir === 0 && rankDir === direction && isEmpty) {
+          console.log("✅ Pawn: 1-square forward");
+          return true;
+        }
+
+        // Forward move (2 squares from start)
+        if (fileDir === 0 && rankDir === 2 * direction && fromRank === startRank && isEmpty) {
+          const middleSquare = String.fromCharCode(97 + fromFile) + (fromRank + direction + 1);
+          console.log("Checking 2-square forward, middle:", middleSquare);
+          if (board.get(middleSquare as Square)) {
+            console.log("❌ Pawn: path blocked");
+            return false;
+          }
+          console.log("✅ Pawn: 2-square forward");
+          return true;
+        }
+
+        // Diagonal capture
+        if (fileDiff === 1 && rankDir === direction) {
+          // Allow if there's a piece to capture OR if it's en-passant square shape
+          // (en-passant legality checked at execution, but shape allowed now)
+          if (isCapture) {
+            console.log("✅ Pawn: diagonal capture");
+            return true;
+          }
+
+          // Allow diagonal move to empty square (might be en-passant later)
+          const epRank = pieceColor === 'w' ? 5 : 2; // 6th rank for white, 3rd for black
+          if (toRank === epRank) {
+            console.log("✅ Pawn: en-passant shape");
+            return true;
+          }
+
+          console.log("❌ Pawn: diagonal to empty (not ep rank)");
+          return false;
+        }
+
+        console.log("❌ Pawn: no rule matched");
+        return false;
+
+      case 'n': // Knight
+        const isValidKnight = (fileDiff === 2 && rankDiff === 1) || (fileDiff === 1 && rankDiff === 2);
+        console.log(isValidKnight ? "✅ Knight: valid L-shape" : "❌ Knight: invalid L-shape");
+        return isValidKnight;
+
+      case 'b': // Bishop
+        if (fileDiff !== rankDiff) {
+          console.log("❌ Bishop: not diagonal");
+          return false;
+        }
+        const bishopClear = isPathClear(fromFile, fromRank, toFile, toRank);
+        console.log(bishopClear ? "✅ Bishop: diagonal path clear" : "❌ Bishop: path blocked");
+        return bishopClear;
+
+      case 'r': // Rook
+        if (fileDiff !== 0 && rankDiff !== 0) {
+          console.log("❌ Rook: not straight");
+          return false;
+        }
+        const rookClear = isPathClear(fromFile, fromRank, toFile, toRank);
+        console.log(rookClear ? "✅ Rook: straight path clear" : "❌ Rook: path blocked");
+        return rookClear;
+
+      case 'q': // Queen
+        if (fileDiff !== 0 && rankDiff !== 0 && fileDiff !== rankDiff) {
+          console.log("❌ Queen: not straight or diagonal");
+          return false;
+        }
+        const queenClear = isPathClear(fromFile, fromRank, toFile, toRank);
+        console.log(queenClear ? "✅ Queen: path clear" : "❌ Queen: path blocked");
+        return queenClear;
+
+      case 'k': // King
+        // Adjacent square
+        if (fileDiff <= 1 && rankDiff <= 1 && (fileDiff + rankDiff > 0)) {
+          console.log("✅ King: adjacent square");
+          return true;
+        }
+
+        // Castling shape (king moves 2 squares horizontally)
+        if (rankDiff === 0 && fileDiff === 2) {
+          console.log("Checking castling...");
+          // Check if pieces are in castling positions
+          const isKingside = toFile > fromFile;
+          const rookFile = isKingside ? 7 : 0;
+          const rookSquare = String.fromCharCode(97 + rookFile) + (fromRank + 1);
+          const rookPiece = board.get(rookSquare as Square);
+
+          // Check rook exists
+          if (!rookPiece || rookPiece.type !== 'r' || rookPiece.color !== pieceColor) {
+            console.log("❌ King: castling - rook not in position");
+            return false;
+          }
+
+          // Check path is clear
+          const step = isKingside ? 1 : -1;
+          for (let f = fromFile + step; f !== rookFile; f += step) {
+            const sq = String.fromCharCode(97 + f) + (fromRank + 1);
+            if (board.get(sq as Square)) {
+              console.log("❌ King: castling - path blocked");
+              return false;
+            }
+          }
+
+          console.log("✅ King: castling shape valid");
+          return true;
+        }
+
+        console.log("❌ King: move too far");
+        return false;
+
+      default:
+        console.log("❌ Unknown piece type:", pieceType);
+        return false;
+    }
+  }
+
   // Helper to recalculate preview position from remaining premoves
   function recalculatePreviewPosition(baseFen: string, remainingPremoves: PieceDropHandlerArgs[]): string | null {
     let currentFen = baseFen;
@@ -818,9 +1058,32 @@ export default function ChessPage() {
       (playerColor === "white" && currentTurn === "w") ||
       (playerColor === "black" && currentTurn === "b");
 
+    // Clear any stale premoves if it's now the player's turn
+    if (isPlayerTurn && premovesRef.current.length > 0) {
+      console.log("Clearing stale premoves - it's now player's turn");
+      premovesRef.current = [];
+      setPremoves([]);
+      setPreviewPosition(null);
+    }
+
     // Check if this is a premove (piece isn't the color of the current player's turn)
     const pieceColor = piece.pieceType[0]; // 'w' or 'b'
+
+    console.log("Move attempt:", {
+      from: sourceSquare,
+      to: targetSquare,
+      piece: piece.pieceType,
+      currentTurn,
+      playerColor,
+      isPlayerTurn,
+      pieceColor,
+      isPremove: currentTurn !== pieceColor,
+      hasPreview: !!previewPosition,
+      premoveCount: premovesRef.current.length
+    });
+
     if (currentTurn !== pieceColor) {
+      // PREMOVE CREATION - opponent's turn, player is queuing moves
       // Only allow premoves for the player's own pieces
       const canPremove =
         (playerColor === "white" && pieceColor === "w") ||
@@ -830,46 +1093,64 @@ export default function ChessPage() {
         return false;
       }
 
-      // Use preview position if exists (for chaining premoves)
+      // PSEUDO-LEGAL VALIDATION AT CREATION TIME (per chess.com spec)
+      // Check: piece movement rules, path clearance, pawn rules
+      // Do NOT check: king safety, pins, future board state
+      // Validation happens at EXECUTION time for full legality
+
       const currentFen = previewPosition || chessGame.fen();
+      const testBoard = new Chess(currentFen);
 
-      // Validate move by simulating it's the player's turn
-      const testGame = new Chess(currentFen);
+      // 1. Piece must exist at source square
+      const pieceAtSource = testBoard.get(sourceSquare as Square);
 
-      // Make a dummy opponent move to switch turns
-      const opponentMoves = testGame.moves({ verbose: true });
-      if (opponentMoves.length > 0) {
-        testGame.move(opponentMoves[0]); // Switch turn to player
-
-        // Now test if the premove would be legal from current/preview position
-        const testMove = {
-          from: sourceSquare as Square,
-          to: targetSquare as Square,
-          promotion: "q" as const,
-        };
-
-        try {
-          const isValid = testGame.move(testMove);
-
-          if (!isValid) {
-            // Invalid move - silently reject (piece goes back)
-            return false;
-          }
-        } catch {
-          // Invalid move - silently reject
-          return false;
-        }
-      }
-
-      // Move is valid - apply it visually to preview
-      const newFen = applyPremoveToFen(currentFen, sourceSquare, targetSquare, piece);
-
-      if (!newFen) {
-        // Couldn't apply FEN - silently reject
+      if (!pieceAtSource) {
+        console.log("Premove blocked: no piece at source square");
+        toast.error("Invalid premove - no piece there");
         return false;
       }
 
-      // Add to premoves list
+      // 2. Piece must belong to player
+      if (pieceAtSource.color !== pieceColor) {
+        console.log("Premove blocked: wrong color piece");
+        toast.error("Invalid premove - not your piece");
+        return false;
+      }
+
+      // 3. Target square must not have player's own piece
+      const targetPiece = testBoard.get(targetSquare as Square);
+      if (targetPiece && targetPiece.color === pieceColor) {
+        console.log("Premove blocked: can't capture own piece");
+        toast.error("Invalid premove - can't capture own piece");
+        return false;
+      }
+
+      // 4. PSEUDO-LEGAL CHECK: movement must follow piece rules
+      if (!isPseudoLegal(sourceSquare, targetSquare, piece.pieceType, testBoard)) {
+        console.log("Premove blocked: violates piece movement rules", {
+          piece: piece.pieceType,
+          from: sourceSquare,
+          to: targetSquare
+        });
+        toast.error("Invalid premove - illegal piece movement");
+        return false;
+      }
+
+      // Apply premove visually to preview
+      const newFen = applyPremoveToFen(currentFen, sourceSquare, targetSquare, piece);
+
+      if (!newFen) {
+        console.log("Premove rejected: couldn't apply to FEN");
+        return false;
+      }
+
+      console.log("✅ Premove accepted (pseudo-legal, will validate full legality at execution):", {
+        from: sourceSquare,
+        to: targetSquare,
+        piece: piece.pieceType
+      });
+
+      // Add to premoves queue
       premovesRef.current.push({
         sourceSquare,
         targetSquare,
@@ -896,6 +1177,13 @@ export default function ChessPage() {
     );
 
     if (!foundMove) {
+      console.log("Move rejected:", {
+        from: sourceSquare,
+        to: targetSquare,
+        piece: piece.pieceType,
+        possibleMoves: possiblemoves.map(m => `${m.from}-${m.to}`),
+        currentFen: chessGame.fen()
+      });
       toast.error("Invalid move");
       return false;
     }
