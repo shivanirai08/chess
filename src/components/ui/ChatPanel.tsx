@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import Button from "./Button";
 import { Socket } from "socket.io-client";
-import { toast } from "sonner";
+import { X, Send } from "lucide-react";
+import Button from "./Button";
 
 export type Message = {
   id: string;
@@ -35,12 +35,10 @@ export default function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); // Auto-scroll to bottom on new message
   }, [messages]);
 
-  // Focus input when chat opens
   useEffect(() => {
     if (isOpen) {
       inputRef.current?.focus();
@@ -57,16 +55,13 @@ export default function ChatPanel({
       timestamp: new Date(),
     };
 
-    // Add message via callback
     onAddMessage(newMessage);
 
-    // Emit to server
     socket.emit("chat-message", {
       gameId,
       message: inputMessage.trim(),
     });
 
-    // Clear input
     setInputMessage("");
   };
 
@@ -106,20 +101,7 @@ export default function ChatPanel({
             className="text-gray-400 hover:text-white transition-colors p-2"
             aria-label="Close chat"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <X className="h-6 w-6" />
           </button>
         </div>
 
@@ -154,8 +136,8 @@ export default function ChatPanel({
                   </span>
                 </div>
               </div>
-            ))
-          )}
+            )))
+          }
           <div ref={messagesEndRef} />
         </div>
 
@@ -171,15 +153,18 @@ export default function ChatPanel({
               placeholder="Type a message..."
               className="flex w-full bg-zinc-800 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
             />
-            <div><Button
-              size="small"
-              variant="primary"
-              onClick={handleSendMessage}
-              disabled={!inputMessage.trim()}
-              className="h-full"
-            >
-              Send
-            </Button></div>
+            <div>
+              <Button
+                size="small"
+                variant="primary"
+                onClick={handleSendMessage}
+                disabled={!inputMessage.trim()}
+                className="h-full"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Send
+              </Button>
+            </div>
           </div>
         </div>
       </div>

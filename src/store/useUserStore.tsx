@@ -1,7 +1,5 @@
 "use client";
 
-import { g } from "framer-motion/client";
-import { gunzip } from "zlib";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 

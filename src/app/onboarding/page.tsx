@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import Input from "@/components/ui/Input";
@@ -39,7 +39,7 @@ export default function Onboarding() {
 
   useEffect(() => {
     setUser({ username: "You", avatar: "/avatar7.svg", guestId: null });
-  }, []);
+  }, [setUser]);
 
   // Reset state when component mounts (coming back from game)
   useEffect(() => {
@@ -54,7 +54,7 @@ export default function Onboarding() {
       socket.disconnect();
       setSocket(null);
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   //**websocket connection function**
   const connectSocket = (guestId: string) => {
@@ -69,7 +69,7 @@ export default function Onboarding() {
     // Connection events
     newSocket.on("connect", () => {
       console.log("Socket connected:", newSocket.id);
-      setSocketId(newSocket.id); // Store socket ID
+      setSocketId(newSocket.id ?? null);
       setSocketConnected(true);
       setConnectingSocket(false);
       toast.success("Connected to game server");
@@ -146,12 +146,11 @@ export default function Onboarding() {
     }
 
     try {
-      const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/matchmaking/join-guest`, {
+      await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/matchmaking/join-guest`, {
         guestId: user.guestId,
         socketId: socketId,
         guestName: name,
       });
-      const data = response.data;
 
       // Advance to step 3 (matchmaking screen)
       setStep(3);
