@@ -48,7 +48,7 @@ export default function ChessPage() {
 
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
-  const [showAnimations, setShowAnimations] = useState(true);
+  const [showAnimations, _setShowAnimations] = useState(true);
   const [moves, setMoves] = useState<{ moveNumber: number; white?: string; black?: string }[]>([]);
   const [currentMoveIndex, setCurrentMoveIndex] = useState(() => moves.length - 1);
   const [gameStatus, setGameStatus] = useState<string>("active");
@@ -66,7 +66,7 @@ export default function ChessPage() {
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [showDrawOffer, setShowDrawOffer] = useState(false);
   const [isDrawOffering, setIsDrawOffering] = useState(false); // true if we sent the offer
-  const [drawOfferFrom, setDrawOfferFrom] = useState<string>(""); // who sent the draw offer
+  const [_drawOfferFrom, setDrawOfferFrom] = useState<string>(""); // who sent the draw offer
 
   // Game setup
   // Game state management
@@ -732,7 +732,7 @@ export default function ChessPage() {
       socket.emit("resign", gameId);
 
       const timeout = setTimeout(async () => {
-        const result = await resignGame(gameId);
+        await resignGame(gameId);
       }, 3000);
 
       const resignListener = () => {

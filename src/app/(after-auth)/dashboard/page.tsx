@@ -1,135 +1,502 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { LogOut, Play, Trophy, Users, Settings } from "lucide-react";
+import { Settings, Trophy, ChevronLeft, ChevronRight, Zap } from "lucide-react";
+import { TbTargetArrow } from "react-icons/tb"
+import { FaChess, FaFire } from "react-icons/fa";
+
+// Custom Chess Time Control Icons
+const BulletIcon = ({ size = 16, className = "", style }: { size?: number; className?: string; style?: React.CSSProperties }) => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" height={size} width={size} className={className} style={style} xmlns="http://www.w3.org/2000/svg">
+    <path d="M7.17005 15.2999L8.60005 16.7699L0.330049 23.6699L7.17005 15.2999ZM0.300049 17.5999L4.80005 11.5999L5.70005 13.5999L0.300049 17.5999ZM10.77 10.0999C14.24 6.49994 16.7 4.89994 19.47 3.69994C17.07 3.69994 14.17 4.06994 9.67005 8.29994C9.70005 8.79994 10.37 9.76994 10.77 10.0999ZM21.83 2.16994C21.83 2.16994 22.06 3.26994 22.06 4.93994C22.06 7.60994 21.39 11.7699 17.89 15.2699L15.72 17.4399C15.05 18.1099 14.39 18.0399 13.59 17.7099L6.12005 24.0099L15.92 11.8399L10.69 15.8699C10.26 15.4699 9.76005 15.0399 9.36005 14.6399C7.63005 12.9399 5.23005 9.63994 6.59005 8.26994L8.79005 6.13994C12.32 2.63994 16.42 1.93994 19.09 1.93994C20.72 1.93994 21.82 2.16994 21.82 2.16994H21.83Z" fill="currentColor"/>
+  </svg>
+);
+
+const BlitzIcon = ({ size = 16, className = "", style }: { size?: number; className?: string; style?: React.CSSProperties }) => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" height={size} width={size} className={className} style={style} xmlns="http://www.w3.org/2000/svg">
+    <path d="M5.77002 15C4.74002 15 4.40002 14.6 4.57002 13.6L6.10002 3.4C6.27002 2.4 6.73002 2 7.77002 2H13.57C14.6 2 14.9 2.4 14.64 3.37L11.41 15H5.77002ZM18.83 9C19.86 9 20.03 9.33 19.4 10.13L9.73002 22.86C8.50002 24.49 8.13002 24.33 8.46002 22.29L10.66 8.99L18.83 9Z" fill="currentColor"/>
+  </svg>
+);
+
+const RapidIcon = ({ size = 16, className = "", style }: { size?: number; className?: string; style?: React.CSSProperties }) => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" height={size} width={size} className={className} style={style} xmlns="http://www.w3.org/2000/svg">
+    <path d="M11.97 14.63C11.07 14.63 10.1 13.9 10.47 12.4L11.5 8H12.5L13.53 12.37C13.9 13.9 12.9 14.64 11.96 14.64L11.97 14.63ZM12 22.5C6.77 22.5 2.5 18.23 2.5 13C2.5 7.77 6.77 3.5 12 3.5C17.23 3.5 21.5 7.77 21.5 13C21.5 18.23 17.23 22.5 12 22.5ZM12 19.5C16 19.5 18.5 17 18.5 13C18.5 9 16 6.5 12 6.5C8 6.5 5.5 9 5.5 13C5.5 17 8 19.5 12 19.5ZM10.5 5.23V1H13.5V5.23H10.5ZM15.5 2H8.5C8.5 0.3 8.93 0 12 0C15.07 0 15.5 0.3 15.5 2Z" fill="currentColor"/>
+  </svg>
+);
 import { useUserStore } from "@/store/useUserStore";
 import Cookies from "js-cookie";
+import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 
 export default function Dashboard() {
   const router = useRouter();
   const { clearUser, user } = useUserStore();
+  const [welcomeMessage, setWelcomeMessage] = useState("Welcome back");
+
+  // Weekly stats states
+  const [selectedWeek, setSelectedWeek] = useState(0); // 0 = current week, -1 = last week, etc.
+  const [selectedMetric, setSelectedMetric] = useState<"total" | "win" | "loss" | "draw">("total");
+
+  useEffect(() => {
+    // Check if user came from signup/verifyotp (new user) or login (returning user)
+    if (typeof window !== "undefined") {
+      const referrer = document.referrer;
+      const isNewUser = referrer.includes("/verifyotp") || referrer.includes("/signup");
+      setWelcomeMessage(isNewUser ? "Welcome" : "Welcome back");
+    }
+  }, []);
 
   const handleLogout = () => {
     try {
       clearUser();
       Cookies.remove("auth-token");
-  } catch (err) {
-    console.error("Failed to clear auth data", err);
-  }
+    } catch (err) {
+      console.error("Failed to clear auth data", err);
+    }
     toast.success("Logged out successfully!");
     setTimeout(() => router.push("/login"), 300);
   };
 
-  return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-8 py-6">
-        <Link
-          href="/"
-          className="text-2xl font-bold font-gveher text-white hover:text-gray-300 transition-colors"
-        >
-          Chess
-        </Link>
+  const timeControls = [
+    { time: "1|0", icon: BulletIcon },
+    { time: "1|1", icon: BulletIcon },
+    { time: "2|1", icon: BulletIcon },
+    { time: "3|0", icon: BlitzIcon },
+    { time: "3|2", icon: BlitzIcon },
+    { time: "5|0", icon: BlitzIcon },
+    { time: "5|3", icon: RapidIcon },
+    { time: "10|0", icon: RapidIcon },
+    { time: "10|5", icon: RapidIcon },
+  ];
 
-        {/* User Profile and Logout */}
-        <div className="flex items-center gap-4">
-          {/* User Avatar and Name */}
-          <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-zinc-900/60 border border-zinc-700">
+  const completedGames = [
+    {
+      username: "ChessMaster_99",
+      rating: 2580,
+      result: "win",
+      accuracy: 94.2,
+      moves: 42,
+      date: "Nov 28, 2025",
+    },
+    {
+      username: "QueenGambit2024",
+      rating: 2610,
+      result: "loss",
+      accuracy: 87.5,
+      moves: 38,
+      date: "Nov 28, 2025",
+    },
+    {
+      username: "RookieKnight",
+      rating: 2420,
+      result: "draw",
+      accuracy: 91.8,
+      moves: 56,
+      date: "Nov 27, 2025",
+    },
+    {
+      username: "TacticalGenius",
+      rating: 2455,
+      result: "win",
+      accuracy: 88.1,
+      moves: 34,
+      date: "Nov 27, 2025",
+    },
+    {
+      username: "EndgameExpert",
+      rating: 2490,
+      result: "win",
+      accuracy: 93.4,
+      moves: 48,
+      date: "Nov 26, 2025",
+    },
+  ];
+
+  const gameStats = [
+    { type: "Overall", icon: Trophy, played: 249, wins: 138, winRate: 55, color: "#10b981" }, // Green
+    { type: "Bullet", icon: BulletIcon, played: 120, wins: 65, winRate: 54, color: "#ef4444" }, // Red
+    { type: "Blitz", icon: BlitzIcon, played: 87, wins: 43, winRate: 49, color: "#f59e0b" }, // Amber/Orange
+    { type: "Rapid", icon: RapidIcon, played: 42, wins: 30, winRate: 71, color: "#3b82f6" }, // Blue
+  ];
+
+  // Weekly stats data (mock data - replace with real data later)
+  const weeklyStats = {
+    0: { // Current week
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+      total: [5, 8, 6, 10, 7, 12, 9],
+      win: [3, 5, 4, 6, 5, 8, 6],
+      loss: [1, 2, 1, 3, 1, 3, 2],
+      draw: [1, 0, 1, 0, 1, 0, 1],
+    },
+    "-1": { // Last week
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+      total: [7, 6, 9, 8, 10, 11, 8],
+      win: [4, 4, 6, 5, 7, 8, 5],
+      loss: [2, 1, 2, 2, 2, 2, 2],
+      draw: [0, 1, 1, 0, 1, 1, 0],
+    },
+  };
+
+  const currentWeekData = weeklyStats[selectedWeek.toString() as keyof typeof weeklyStats] || weeklyStats["0"];
+  const maxValue = Math.max(...currentWeekData[selectedMetric]);
+
+  const handleStartGame = (timeControl: string) => {
+    toast.info(`Starting ${timeControl} game...`);
+    router.push("/play");
+  };
+
+  const getWeekLabel = (weekOffset: number) => {
+    if (weekOffset === 0) return "This Week";
+    if (weekOffset === -1) return "Last Week";
+    return `${Math.abs(weekOffset)} weeks ago`;
+  };
+
+  return (
+    <div className="h-screen overflow-hidden flex flex-col">
+      {/* TOP HEADER BAR */}
+      <header className="px-8 py-4 flex items-center justify-between flex-shrink-0">
+        <h1 className="text-2xl font-bold">Chess</h1>
+
+        <div className="flex items-center gap-8">
+          {/* User Profile */}
+          <div className="flex items-center gap-3">
             <Image
               src={user.avatar || "/avatar1.svg"}
               alt={user.username || "User"}
-              width={32}
-              height={32}
+              width={40}
+              height={40}
               className="rounded-full"
             />
             <div className="flex flex-col">
-              <span className="text-sm font-medium text-white">{user.username}</span>
-              <span className="text-xs text-gray-400">ELO: {user.elo || 300}</span>
+              <span className="text-sm font-medium">{user.username}</span>
+              <span className="text-xs text-[#a0a0a0]">Rating: {user.elo || 300}</span>
             </div>
           </div>
 
-          {/* Logout Button */}
+          {/* Settings Icon */}
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-900/60 border border-zinc-700 text-sm font-medium hover:bg-zinc-800 transition-all"
+            className="text-[#a0a0a0] hover:text-white transition-all duration-300 hover:rotate-45"
+            aria-label="Settings"
           >
-            <LogOut size={18} />
-            Logout
+            <Settings size={24} />
           </button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="relative z-10 flex flex-col items-center justify-center h-[80vh] px-4 text-center">
-        <h1 className="text-4xl md:text-5xl font-bold font-gveher mb-4">
-            Welcome to Your Dashboard
-        </h1>
-        <p className="text-gray-300 mb-10 max-w-md">
-          Ready to play? Start a match, check the leaderboard, or connect with friends.
-        </p>
+      {/* MAIN CONTENT - Two Column Layout */}
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full px-8 py-2 grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6 overflow-hidden">
+          {/* LEFT COLUMN - Statistics */}
+          <div className="flex flex-col h-full overflow-y-auto min-w-0">
+          {/* STATISTICS OVERVIEW */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="rounded-xl mb-6"
+          >
+            {/* Welcome Message */}
+            <h2 className="text-2xl font-bold mb-6">
+              {welcomeMessage}, {user.username || "Player"}
+            </h2>
 
-        {/* Dashboard Actions */}
-        <div className="grid grid-cols-2 gap-6 w-full max-w-lg">
-          <DashboardCard
-            title="Play Game"
-            icon={<Play className="w-6 h-6" />}
-            onClick={() => router.push("/play")}
-          />
-          <DashboardCard
-            title="Leaderboard"
-            icon={<Trophy className="w-6 h-6" />}
-            onClick={() => router.push("/play")}
-          />
-          <DashboardCard
-            title="Friends"
-            icon={<Users className="w-6 h-6" />}
-            onClick={() => router.push("/play")}
-          />
-          <DashboardCard
-            title="Settings"
-            icon={<Settings className="w-6 h-6" />}
-            onClick={() => router.push("/play")}
-          />
+            {/* Top Row - Key Metrics */}
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              {/* ELO */}
+              <div className="bg-white/5 backdrop-blur-xs rounded-lg p-4 flex flex-col items-end justify-center gap-2 h-20 relative overflow-hidden">
+                <TbTargetArrow size={90} className="text-[#a855f7] opacity-50 absolute -top-1 -left-2" />
+                <span className="text-4xl font-bold">344</span>
+                <span className="text-sm text-[#a0a0a0]">ELO</span>
+              </div>
+
+              {/* Games */}
+              <div className="bg-white/5 backdrop-blur-xs rounded-lg p-4 flex flex-col items-end justify-center gap-2 relative h-20 overflow-hidden">
+                <FaChess size={80} className="text-primary opacity-50 absolute -top-0 -left-1" />
+                <span className="text-4xl font-bold">1,247</span>
+                <span className="text-sm text-[#a0a0a0]">Games</span>
+              </div>
+
+              {/* Streak */}
+              <div className="bg-white/5 backdrop-blur-xs rounded-lg p-4 flex flex-col items-end justify-center gap-2 h-20 relative overflow-hidden">
+                <FaFire size={80} className="text-orange-500 opacity-50 absolute -top-0 -left-2" />
+                <span className="text-4xl font-bold">42</span>
+                <span className="text-sm text-[#a0a0a0]">Streak</span>
+              </div>
+            </div>
+
+            {/* PERFORMANCE BY FORMAT */}
+            <div>
+              <h3 className="text-sm font-medium mb-4">Performance by Format</h3>
+
+              <div className="flex gap-4">
+                {gameStats.map((stat, index) => {
+                  const Icon = stat.icon;
+
+                  return (
+                    <motion.div
+                      key={stat.type}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: 0.1 + index * 0.05 }}
+                      className="bg-white/5 backdrop-blur-xs flex-1 rounded-lg p-4 transition-all duration-300 relative overflow-hidden cursor-pointer"
+                    >
+                      {/* <div className="absolute -top-2 -right-2 opacity-10 pointer-events-none">
+                        <Icon size={100} style={{ color: "#5d5a5aff"}} />
+                      </div> */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <Icon size={16} style={{ color: stat.color }} />
+                        <span className="text-sm font-medium">{stat.type}</span>
+                      </div>
+
+                      <div className="flex items-end justify-between mb-2">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-[#a0a0a0]">Played</span>
+                          <span className="text-lg font-bold" style={{ color: stat.color }}>
+                            {stat.played}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] text-[#a0a0a0]">Wins</span>
+                          <span className="text-sm text-[#a0a0a0]">{stat.wins}</span>
+                        </div>
+                      </div>
+
+                      {/* Progress Bar - represents win rate */}
+                      <div className="h-1 bg-[#1a1a1a] rounded-full overflow-hidden relative group">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${stat.winRate}%` }}
+                          transition={{ duration: 1, delay: 0.3 + index * 0.1, ease: "easeOut" }}
+                          className="h-full rounded-full"
+                          style={{
+                            background: `linear-gradient(to right, ${stat.color}, ${stat.color}dd)`
+                          }}
+                        />
+                        {/* Tooltip - shows win rate on hover */}
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 text-white text-xs px-2 py-1 rounded whitespace-nowrap pointer-events-none">
+                          Win Rate: {stat.winRate}%
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.section>
+
+          {/* COMPLETED GAMES SECTION */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 }}
+            className="bg-white/10 p-6 rounded-xl overflow-hidden flex flex-col"
+          >
+            <h2 className="text-lg font-bold mb-4">Completed Games</h2>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
+              {completedGames.map((game, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: 0.3 + index * 0.05 }}
+                  className={`h-18 rounded-lg py-2 px-4 flex items-center justify-between cursor-pointer transition-all duration-200 border ${
+                    game.result === "win"
+                      ? "border-[#10b981] hover:bg-[#1a3a2a]"
+                      : game.result === "loss"
+                      ? "border-[#ef4444] hover:bg-[#3a1a1a]"
+                      : "hover:bg-[#2a2a2a]"
+                  }`}
+                  onClick={() => toast.info("Game review coming soon...")}
+                >
+                  {/* Left Side - Opponent Info */}
+                  <div className="flex items-center gap-3">
+                    <div>
+                      {game.result === "win" ? (
+                        <Trophy size={20} className="text-[#10b981]" />
+                      ) : game.result === "loss" ? (
+                        <div className="w-5 h-5 text-red-500 font-bold">✕</div>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full border-2 border-[#a0a0a0]" />
+                      )}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold">{game.username}</span>
+                      <span className="text-xs text-[#a0a0a0]">{game.rating}</span>
+                    </div>
+                  </div>
+
+                  {/* Right Side - Game Stats */}
+                  <div className="hidden md:flex items-center gap-6">
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] text-[#a0a0a0]">Accuracy</span>
+                      <span className="text-sm">{game.accuracy}%</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] text-[#a0a0a0]">Moves</span>
+                      <span className="text-sm">{game.moves}</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] text-[#a0a0a0]">Date</span>
+                      <span className="text-sm">{game.date}</span>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </motion.section>
         </div>
-      </main>
 
-      {/* Background Illustration */}
-      <div className="absolute -bottom-24 -right-40 md:w-150 md:h-150 w-100 h-100 opacity-30 lg:opacity-50 pointer-events-none z-10">
-        <Image
-          src="/auth.svg"
-          alt="Chess Illustration"
-          width={200}
-          height={200}
-          className="w-full h-full object-contain"
-        />
+        {/* RIGHT COLUMN - New Game Section */}
+        <div className="flex flex-col h-full overflow-y-auto min-w-0">
+          {/* NEW GAME SECTION */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="rounded-xl mb-4"
+          >
+            <h2 className="text-lg font-bold mb-5">New Game</h2>
+
+            {/* Time Control Grid */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {timeControls.map((control, index) => (
+                <motion.button
+                  key={index}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: 0.2 + index * 0.05 }}
+                  onClick={() => handleStartGame(control.time)}
+                  className="h-14 bg-white/5 backdrop-blur-xs rounded-lg hover:bg-white/10  transition-all duration-200 flex flex-col items-center justify-center gap-1 relative overflow-hidden cursor-pointer hover:border hover:border-primary group"
+                >
+                  <div className="absolute -top-1 -right-1 opacity-10 pointer-events-none transition-all duration-200">
+                    <control.icon size={64} className="text-[#5d5a5a] group-hover:text-primary transition-colors duration-200" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{control.time}</span>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              {/* Custom Button */}
+              <button
+                onClick={() => toast.info("Custom game setup coming soon...")}
+                className="flex-1 h-12 border border-gray-500 rounded-lg hover:bg-primary
+                hover:text-black hover:border-none font-medium hover:font-semibold transition-all duration-200 cursor-pointer"
+              >
+                <span className="text-sm">Custom Game</span>
+              </button>
+
+              {/* VS Computer Button */}
+              <button
+                onClick={() => toast.info("VS Computer coming soon...")}
+                className="flex-1 h-12 hover:bg-secondary border border-gray-500 hover:border-none font-medium hover:font-semibold rounded-lg transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Zap size={20} />
+                <span className=" text-sm">Vs Computer</span>
+              </button>
+            </div>
+          </motion.section>
+
+          {/* WEEKLY STATS SECTION */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 }}
+            className=" rounded-xl p-4 flex-1 flex flex-col bg-white/10"
+          >
+            {/* Header with Week Navigation */}
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold">Weekly Performance</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedWeek(selectedWeek - 1)}
+                  className="p-1 rounded hover:bg-white/10 transition-colors"
+                  aria-label="Previous week"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-sm text-white min-w-[80px] text-center">
+                  {getWeekLabel(selectedWeek)}
+                </span>
+                <button
+                  onClick={() => setSelectedWeek(selectedWeek + 1)}
+                  disabled={selectedWeek >= 0}
+                  className="p-1 rounded hover:bg-white/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Next week"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Metric Toggles */}
+            <div className="flex gap-2 ">
+              {[
+                { key: "total", label: "Total", color: "bg-secondary" },
+                { key: "win", label: "Wins", color: "bg-[#10b981]" },
+                { key: "loss", label: "Losses", color: "bg-red-500" },
+                { key: "draw", label: "Draws", color: "bg-gray-500" },
+              ].map((metric) => (
+                <button
+                  key={metric.key}
+                  onClick={() => setSelectedMetric(metric.key as typeof selectedMetric)}
+                  className={`flex-1 px-2 py-2 cursor-pointer rounded text-sm font-medium transition-all text-white ${
+                    selectedMetric === metric.key
+                      ? `${metric.color}`
+                      : "bg-white/8 hover:bg-white/10"
+                  }`}
+                >
+                  {metric.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Bar Chart */}
+            <div className="flex-1 flex items-end justify-between gap-2 px-2">
+              {currentWeekData.days.map((day, index) => {
+                const value = currentWeekData[selectedMetric][index];
+                const heightPercentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
+
+                return (
+                  <div key={day} className="flex-1 flex flex-col items-center gap-2">
+                    {/* Bar */}
+                    <div className="w-full flex items-end justify-center" style={{ height: "120px" }}>
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: `${heightPercentage}%` }}
+                        transition={{ duration: 0.5, delay: index * 0.05 }}
+                        className={`w-full rounded-t relative group ${
+                          selectedMetric === "win"
+                            ? "bg-gradient-to-t from-[#A9E8AD] to-[#388B1D]"
+                            : selectedMetric === "loss"
+                            ? "bg-gradient-to-t from-[#FA8183] to-[#AF2528]"
+                            : selectedMetric === "draw"
+                            ? "bg-gradient-to-t from-[#6F6C6C] to-[#424141]"
+                            : "bg-gradient-to-t from-[#A15DE5] to-[#5B2791]"
+                        }`}
+                      >
+                        {/* Tooltip on hover */}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                          {value} games
+                        </div>
+                      </motion.div>
+                    </div>
+                    {/* Day Label */}
+                    <span className="text-sm text-[#a0a0a0]">{day}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.section>
+        </div>
       </div>
     </div>
-  );
-}
-
-function DashboardCard({
-  title,
-  icon,
-  onClick,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="group flex flex-col items-center justify-center gap-3 p-6 rounded-2xl backdrop-blur-sm bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/60 transition-all duration-300 cursor-pointer"
-    >
-      <div className="text-gray-300 group-hover:text-white transition-colors">
-        {icon}
-      </div>
-      <span className="text-sm font-medium text-gray-300 group-hover:text-white">
-        {title}
-      </span>
-    </button>
+  </div>
   );
 }
