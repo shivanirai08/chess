@@ -9,8 +9,9 @@ import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
-import Cookies from "js-cookie";  
+import Cookies from "js-cookie";
 import { useUserStore } from "@/store/useUserStore";
+import { getAvatarUrl } from "@/utils/avatar";
 
 export default function LogIn() {
   const router = useRouter();
@@ -38,9 +39,9 @@ export default function LogIn() {
       password:
         !password ||
         password.length < 6 ||
-        !/[A-Za-z]/.test(password) ||
-        !/\d/.test(password) ||
-        !/[!@#$%^&*(),.?":{}|<>]/.test(password),
+        !/[A-Z]/.test(password) ||
+        !/[a-z]/.test(password) ||
+        !/\d/.test(password),
     };
 
     setErrors(newErrors);
@@ -48,7 +49,7 @@ export default function LogIn() {
     if (newErrors.email) toast.error("Please enter a valid email address.");
     else if (newErrors.password)
       toast.warning(
-        "Password must have at least 6 characters, one number, one letter, and one special character."
+        "Password must have at least 6 characters, one uppercase letter, one lowercase letter, and one number."
       );
 
     return !Object.values(newErrors).includes(true);
@@ -73,8 +74,7 @@ export default function LogIn() {
       );
 
       toast.success("Signed in successfully!");
-      const userData = JSON.stringify(res.data.user);
-      
+
       if (res.data.token) {
       Cookies.set("auth-token", res.data.token, {
           path: "/", // accessible throughout the site
@@ -83,8 +83,12 @@ export default function LogIn() {
           secure: process.env.NODE_ENV === "production", // only send cookie over HTTPS in production
         });
       }
-  
-      setUser({ ...res.data.user, isGuest: false });
+
+      setUser({
+        ...res.data.user,
+        avatar: getAvatarUrl(res.data.user.avatar),
+        isGuest: false
+      });
 
       //remember me functionality
     

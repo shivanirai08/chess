@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import Image from "next/image";
 import Cookies from "js-cookie";
 import { useUserStore } from "@/store/useUserStore";
+import { getRandomAvatar, getAvatarUrl } from "@/utils/avatar";
 
 export default function PlayPage() {
   const router = useRouter();
@@ -21,7 +22,7 @@ export default function PlayPage() {
   const [countdown, setCountdown] = useState(5);
   const [gameId, setGameId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
-  const { user: { username } , setOpponent, opponent } = useUserStore();
+  const { user: { username, avatar: userAvatar } , setOpponent, opponent } = useUserStore();
 
 
   // Get token from cookies
@@ -35,7 +36,7 @@ export default function PlayPage() {
     }
   };
 
-  // Create socket connection when matchmaking starts
+  //Create socket connection when matchmaking starts
   useEffect(() => {
       const token = getToken();
 
@@ -61,11 +62,16 @@ export default function PlayPage() {
       });
 
       // Game events
-      newSocket.on('matchmaking-found', (data) => {
+      newSocket.once('matchmaking-found', (data) => {
         console.log('Match found!', data.gameId);
         setGameId(data.gameId);
         console.log("Opponent data:", data.opponent);
-        setOpponent(data.opponent);
+        // Ensure opponent avatar has proper URL format
+        const opponentData = {
+          ...data.opponent,
+          avatar: data.opponent.avatar ? getAvatarUrl(data.opponent.avatar) : getAvatarUrl(getRandomAvatar())
+        };
+        setOpponent(opponentData);
         setMatchFound(true);
         toast.success("Match found!");
       });
@@ -95,6 +101,7 @@ export default function PlayPage() {
         newSocket.off("disconnect");
         newSocket.disconnect();
       };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   // Countdown Timer
@@ -110,7 +117,7 @@ export default function PlayPage() {
     }
   }, [matchFound, countdown, router, gameId]);
 
-  // Start matchmaking api call
+  //Start matchmaking api call
   const startMatchmaking = async () => {
     if (!socket) {
       toast.error("Connection not established. Please try again.");
@@ -234,26 +241,26 @@ export default function PlayPage() {
           <div className="flex items-center gap-8">
             <div className="flex flex-col items-center">
               <Image
-                src="/avatar7.svg"
-                alt="You"
-                width={80}
-                height={80}
-                className="rounded-full"
-              />
-              <p className="mt-2 text-xl font-semibold">{username}</p>
-            </div>
-
-            <span className="text-3xl font-bold">VS</span>
-
-            <div className="flex flex-col items-center">
-              <Image
-                src="/avatar8.svg"
+                src={opponent?.avatar || "/avatar8.svg"}
                 alt="Opponent"
                 width={80}
                 height={80}
                 className="rounded-full"
               />
               <p className="mt-2 text-xl font-semibold">{opponent?.username || "Opponent"}</p>
+            </div>
+
+            <span className="text-3xl font-bold">VS</span>
+
+            <div className="flex flex-col items-center">
+              <Image
+                src={userAvatar || "/avatar1.svg"}
+                alt="You"
+                width={80}
+                height={80}
+                className="rounded-full"
+              />
+              <p className="mt-2 text-xl font-semibold">{username}</p>
             </div>
           </div>
 

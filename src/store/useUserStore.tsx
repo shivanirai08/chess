@@ -7,9 +7,9 @@ type User = {
   elo?: number;
   id?: string;
   email?: string;
-  username: string;
+  username?: string;
   avatar?: string;
-  isGuest?: boolean;
+  guestId?: string | null;
 };
 
 type Opponent = {
@@ -43,7 +43,7 @@ export const useUserStore = create<UserStore>()(
       clearUser: () => {
         localStorage.removeItem("user");
         localStorage.removeItem("user-store");
-        set({ user: { username: "You", avatar: "/avatar7.svg" }, opponent: null, isLoading: false });
+        set({ user: { username: "You", avatar: "/avatar7.svg", guestId : null }, opponent: null, isLoading: false });
       },
     }),
     {

@@ -10,16 +10,25 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useUserStore } from "@/store/useUserStore";
 import GameSetup from "@/components/layout/GameSetup";
+import { io, Socket } from "socket.io-client";
+import { toast } from "sonner";
+import axios from "axios";
+import { getRandomAvatar, getAvatarUrl } from "@/utils/avatar";
 
 export default function Onboarding() {
   const router = useRouter();
-  const { setUser } = useUserStore();
+  const { setUser, user, setOpponent, opponent, clearUser } = useUserStore();
+  const [gameId, setGameId] = useState<string | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socketId, setSocketId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
-  const [avatar, setAvatar] = useState("/avatar7.svg");
+  const [avatar, setAvatar] = useState(() => getAvatarUrl(getRandomAvatar()));
   const [matchFound, setMatchFound] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [direction, setDirection] = useState<"left" | "right">("right");
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [connectingSocket, setConnectingSocket] = useState(false);
   const avatars = [
     "/avatar1.svg",
     "/avatar2.svg",
@@ -27,24 +36,146 @@ export default function Onboarding() {
     "/avatar4.svg",
     "/avatar5.svg",
     "/avatar6.svg",
+    "/avatar7.svg",
+    "/avatar8.svg",
   ];
 
-  // Countdown Timer
+  useEffect(() => {
+    setUser({ username: "You", avatar: "/avatar7.svg", guestId: null });
+  }, [setUser]);
+
+  useEffect(() => {
+    setMatchFound(false);
+    setCountdown(5);
+    setGameId(null);
+    setStep(0);
+    setSocketConnected(false);
+    if (socket) {
+      socket.disconnect();
+      setSocket(null);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const connectSocket = (guestId: string) => {
+    setConnectingSocket(true);
+
+    const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
+      auth: { guestId },
+      transports: ["websocket", "polling"],
+    });
+
+    newSocket.on("connect", () => {
+      setSocketId(newSocket.id ?? null);
+      setSocketConnected(true);
+      setConnectingSocket(false);
+      toast.success("Connected to game server");
+    });
+
+    newSocket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
+      setSocketConnected(false);
+      setConnectingSocket(false);
+      toast.error(`Connection error: ${error.message}`);
+    });
+
+    newSocket.on('matchmaking-found', (data) => {
+      setGameId(data.gameId);
+      // Ensure opponent avatar has proper URL format
+      const opponentData = {
+        ...data.opponent,
+        avatar: data.opponent.avatar ? getAvatarUrl(data.opponent.avatar) : getAvatarUrl(getRandomAvatar())
+      };
+      setOpponent(opponentData);
+      setMatchFound(true);
+      toast.success("Match found!");
+    });
+
+    newSocket.on("error", (error: { message: string }) => {
+      console.error("Socket error:", error);
+      toast.error(error.message);
+    });
+
+    newSocket.on("disconnect", (reason) => {
+      setSocketConnected(false);
+      if (reason === "io server disconnect") {
+        toast.error("Disconnected from server");
+      }
+    });
+
+    setSocket(newSocket);
+  };
+
+  const handleAvatarNext = async () => {
+    try {
+      // Extract just the filename (e.g., "avatar1.svg" from "/avatar1.svg")
+      const avatarFilename = avatar.startsWith('/') ? avatar.substring(1) : avatar;
+
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/guest/register`, {
+        guestName: name,
+        avatar: avatarFilename,
+      });
+      const { guestId } = response.data;
+
+      clearUser();
+      setUser({ username: name || "You", avatar, guestId });
+
+      connectSocket(guestId);
+
+      next();
+    } catch (error) {
+      console.error("Guest registration error:", error);
+      toast.error("Failed to register. Please try again.");
+    }
+  };
+
+  const matchmaking = async () => {
+    if (!socketConnected || !socketId) {
+      toast.error("Please wait for connection to game server...");
+      return;
+    }
+
+    if (!user.guestId) {
+      toast.error("Guest ID not found. Please go back and try again.");
+      return;
+    }
+
+    try {
+      // Extract just the filename (e.g., "avatar1.svg" from "/avatar1.svg")
+      const avatarFilename = avatar.startsWith('/') ? avatar.substring(1) : avatar;
+
+      await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/matchmaking/join-guest`, {
+        guestId: user.guestId,
+        socketId: socketId,
+        guestName: name,
+        avatar: avatarFilename,
+      });
+
+      setStep(3);
+    } catch (error) {
+      console.error("Matchmaking error:", error);
+      if (axios.isAxiosError(error) && error.response?.status === 400) {
+        toast.error(error.response.data.message || "Socket not connected");
+      } else {
+        toast.error("Failed to start matchmaking");
+      }
+    }
+  };
+
   useEffect(() => {
     if (matchFound && countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
       return () => clearTimeout(timer);
     }
-    if (countdown === 0) {
-      router.push("/chess");
+    if (countdown === 0 && gameId) {
+      router.push(`/chess/${gameId}`);
+    } else if (countdown === 0 && !gameId) {
+      toast.error("Failed to start game - no game ID");
+      setMatchFound(false);
+      setCountdown(5);
     }
-  }, [matchFound, countdown, router]);
+  }, [matchFound, countdown, router, gameId]);
 
-  // Question Navigation
   const next = () => {
-    if (step == 2){
-      setUser({ username: name || "You", avatar });
-    }
     if (step < 3) {
       setDirection("right");
       setStep(step + 1);
@@ -112,7 +243,6 @@ export default function Onboarding() {
             {step === 0 && (
               <div className="flex flex-col items-center w-full">
                 <p className="text-3xl md:text-4xl font-gveher font-bold mb-6 text-center">
-                  {/* What&apos;s your name? */}
                   What should we call you ?
                 </p>
                 <div className="space-y-6 w-full md:w-md">
@@ -157,19 +287,25 @@ export default function Onboarding() {
                     })}
                   </div>
                   <Button
-                    onClick={next}
-                    disabled={!name.trim().length}
+                    onClick={handleAvatarNext}
+                    disabled={!name.trim().length || connectingSocket}
                     type="submit"
                     variant="primary"
                     className="md:w-md w-full"
                   >
-                    Next
+                    {connectingSocket ? "Connecting..." : "Next"}
                   </Button>
+                  {connectingSocket && (
+                    <p className="text-sm text-gray-400">Connecting to game server...</p>
+                  )}
+                  {socketConnected && (
+                    <p className="text-sm text-green-400">✓ Connected to game server</p>
+                  )}
                 </div>
               </div>
             )}
             {step === 2 && (
-              <GameSetup next={next}  />
+              <GameSetup next={matchmaking}  />
             )}
 
             {step === 3 && (
@@ -200,13 +336,13 @@ export default function Onboarding() {
             {/* Opponent */}
             <div className="flex flex-col items-center">
               <Image
-                src="/avatar8.svg"
+                src={opponent?.avatar || "/avatar8.svg"}
                 alt="Opponent"
                 width={80}
                 height={80}
                 className="rounded-full"
               />
-              <p className="mt-2 text-xl font-semibold">Opponent</p>
+              <p className="mt-2 text-xl font-semibold">{opponent?.username || "Opponent"}</p>
             </div>
           </div>
 
