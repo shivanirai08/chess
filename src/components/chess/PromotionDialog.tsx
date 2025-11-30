@@ -30,18 +30,21 @@ export function PromotionDialog({ onSelect }: PromotionDialogProps) {
   };
 
   return (
-    <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-black/80 backdrop-blur-md p-4 rounded shadow-lg flex gap-2">
-        {(["q", "r", "b", "n"] as PieceSymbol[]).map((p) => (
-          <button
-            key={p}
-            onClick={() => onSelect(p)}
-            className="w-20 h-20 sm:w-24 sm:h-24 bg-zinc-800 hover:bg-zinc-700 rounded flex items-center justify-center transition-colors"
-            aria-label={`Promote to ${p === "q" ? "Queen" : p === "r" ? "Rook" : p === "b" ? "Bishop" : "Knight"}`}
-          >
-            {promotionPieceFallback(p)}
-          </button>
-        ))}
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-zinc-900/95 rounded-lg p-6 border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
+        <h2 className="text-xl font-bold mb-4 text-center">Promote Pawn</h2>
+        <div className="flex gap-3">
+          {(["q", "r", "b", "n"] as PieceSymbol[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => onSelect(p)}
+              className="w-20 h-20 sm:w-24 sm:h-24 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-lg flex items-center justify-center transition-all hover:scale-105 hover:border-white/30"
+              aria-label={`Promote to ${p === "q" ? "Queen" : p === "r" ? "Rook" : p === "b" ? "Bishop" : "Knight"}`}
+            >
+              {promotionPieceFallback(p)}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

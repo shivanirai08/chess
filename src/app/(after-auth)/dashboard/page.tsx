@@ -10,7 +10,7 @@ import Cookies from "js-cookie";
 
 export default function Dashboard() {
   const router = useRouter();
-  const { clearUser } = useUserStore();
+  const { clearUser, user } = useUserStore();
 
   const handleLogout = () => {
     try {
@@ -34,14 +34,32 @@ export default function Dashboard() {
           Chess
         </Link>
 
-        {/* Logout Button — content width only */}
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-900/60 border border-zinc-700 text-sm font-medium hover:bg-zinc-800 transition-all"
-        >
-          <LogOut size={18} />
-          Logout
-        </button>
+        {/* User Profile and Logout */}
+        <div className="flex items-center gap-4">
+          {/* User Avatar and Name */}
+          <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-zinc-900/60 border border-zinc-700">
+            <Image
+              src={user.avatar || "/avatar1.svg"}
+              alt={user.username || "User"}
+              width={32}
+              height={32}
+              className="rounded-full"
+            />
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-white">{user.username}</span>
+              <span className="text-xs text-gray-400">ELO: {user.elo || 300}</span>
+            </div>
+          </div>
+
+          {/* Logout Button */}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-900/60 border border-zinc-700 text-sm font-medium hover:bg-zinc-800 transition-all"
+          >
+            <LogOut size={18} />
+            Logout
+          </button>
+        </div>
       </header>
 
       {/* Main Content */}

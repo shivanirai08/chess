@@ -9,6 +9,7 @@ import axios from "axios";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { useUserStore } from "@/store/useUserStore";
+import { getAvatarUrl } from "@/utils/avatar";
 
 export default function OTPpage() {
   const router = useRouter();
@@ -91,7 +92,11 @@ export default function OTPpage() {
       setTimeout(() => {
         const token = res.data.forgotPasswordAccessToken;
         if (type === "signup") {
-          setUser({ ...res.data.user, isGuest: false });
+          setUser({
+            ...res.data.user,
+            avatar: getAvatarUrl(res.data.user.avatar),
+            isGuest: false
+          });
           if (res.data.token) {
           Cookies.set("auth-token", res.data.token, {
               path: "/", // accessible throughout the site

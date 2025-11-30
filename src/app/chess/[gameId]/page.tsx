@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import { useUserStore } from "@/store/useUserStore";
 import GameResultModal from "@/components/ui/GameResultModal";
 import ChatPanel, { Message } from "@/components/ui/ChatPanel";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DrawOfferDialog } from "@/components/ui/DrawOfferDialog";
 
 // New modular components
 import { PlayerInfo } from "@/components/chess/PlayerInfo";
@@ -31,6 +33,9 @@ import {
   resignGame,
   getGameIdFromPath,
 } from "@/services/gameApi";
+
+// Utils
+import { getRandomAvatar, getAvatarUrl } from "@/utils/avatar";
 
 export default function ChessPage() {
   const { setUser, user, opponent, setOpponent } = useUserStore();
@@ -57,7 +62,14 @@ export default function ChessPage() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
 
+  // Dialog states
+  const [showResignConfirm, setShowResignConfirm] = useState(false);
+  const [showDrawOffer, setShowDrawOffer] = useState(false);
+  const [isDrawOffering, setIsDrawOffering] = useState(false); // true if we sent the offer
+  const [drawOfferFrom, setDrawOfferFrom] = useState<string>(""); // who sent the draw offer
+
   // Game setup
+  // Game state management
   const chessGameRef = useRef(new Chess());
   const chessGame = chessGameRef.current;
   const [chessPosition, setChessPosition] = useState(chessGame.fen());
@@ -119,13 +131,7 @@ export default function ChessPage() {
       if (gameData && gameData.game) {
         const { game } = gameData;
 
-        console.log("Game data received:", game);
-        console.log("Current playerId:", playerId);
-        console.log("White player ID:", game.whitePlayerId);
-        console.log("Black player ID:", game.blackPlayerId);
-
         // Determine player color and set board orientation
-        // Handle both string and number comparisons
         const whiteId = String(game.whitePlayerId);
         const blackId = String(game.blackPlayerId);
         const currentId = String(playerId);
@@ -133,14 +139,9 @@ export default function ChessPage() {
         if (whiteId === currentId) {
           setPlayerColor("white");
           setBoardOrientation("white");
-          console.log("Player is WHITE, board orientation: white");
         } else if (blackId === currentId) {
           setPlayerColor("black");
           setBoardOrientation("black");
-          console.log("Player is BLACK, board orientation: black");
-        } else {
-          console.warn("Player ID doesn't match either white or black player!");
-          console.warn("Defaulting to white, but this might be incorrect");
         }
 
         // Reset chess game to starting position
@@ -150,14 +151,13 @@ export default function ChessPage() {
 
         // Load moves from API if available
         if (game.moves && Array.isArray(game.moves) && game.moves.length > 0) {
-          console.log("Loading moves from API:", game.moves);
-
           // Apply each move from the API
           for (const move of game.moves) {
             try {
               chessGame.move(move);
             } catch (error) {
-              console.error("Error applying move:", move, error);
+              console.error("Error applying move from API:", error);
+              // Skip invalid moves
             }
           }
 
@@ -166,13 +166,13 @@ export default function ChessPage() {
           updateMovesFromHistory();
         } else if (game.fen) {
           // Fallback: load FEN directly if no moves array
-          console.log("Loading FEN directly:", game.fen);
           try {
             chessGame.load(game.fen);
             setChessPosition(chessGame.fen());
             updateMovesFromHistory();
           } catch (error) {
-            console.error("Error loading FEN:", error);
+            console.error("Error loading FEN from API:", error);
+            // Invalid FEN, use default position
           }
         } else {
           // New game, no moves yet
@@ -182,14 +182,23 @@ export default function ChessPage() {
         // Set game status
         setGameStatus(game.status);
 
-        // **SINGLE PLACE TO SET OPPONENT**
+        // Set opponent data
         if (game.whitePlayerName && game.blackPlayerName) {
           const isWhite = game.whitePlayerId === playerId;
+
+          // Get avatar from API response or use fallback
+          let opponentAvatar;
+          if (isWhite) {
+            opponentAvatar = game.blackPlayerAvatar ? getAvatarUrl(game.blackPlayerAvatar) : getAvatarUrl(getRandomAvatar());
+          } else {
+            opponentAvatar = game.whitePlayerAvatar ? getAvatarUrl(game.whitePlayerAvatar) : getAvatarUrl(getRandomAvatar());
+          }
+
           const opponentData = {
             username: isWhite ? game.blackPlayerName : game.whitePlayerName,
             userId: isWhite ? game.blackPlayerId : game.whitePlayerId,
             isGuest: game.isGuestGame || false,
-            avatar: isWhite ? "/avatar8.svg" : "/avatar7.svg" // You can add avatar logic here
+            avatar: opponentAvatar
           };
 
           // Only set if opponent is different from current user
@@ -218,9 +227,9 @@ export default function ChessPage() {
 
     loadGameState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerId, username]); // Added dependencies
+  }, [playerId, username]);
 
-  // Socket connection
+  // Socket event listeners
   useEffect(() => {
     const token = getToken();
     if (!token && !guestId) {
@@ -231,32 +240,28 @@ export default function ChessPage() {
     const gameId = getGameIdFromPath();
     if (!gameId) return;
 
-    console.log("Connecting to socket...");
     let newSocket: Socket;
-    if(token){ 
+    if(token){
       newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
       auth: { token },
-      transports: ["websocket", "polling"], // Prefer WebSocket, fallback to polling
+      transports: ["websocket", "polling"],
     });}
     else {
       newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
       auth: { guestId : guestId },
-      transports: ["websocket", "polling"], // Prefer WebSocket, fallback to polling
+      transports: ["websocket", "polling"],
     });}
 
     newSocket.on("connect", () => {
-      console.log("Socket connected:", newSocket.id);
-      console.log("Joining game room:", gameId);
       newSocket.emit("join-game", gameId);
     });
 
     newSocket.on("connect_error", (err) => {
-      console.error("Socket error:", err.message);
+      console.error("Socket connection error:", err);
       toast.error(`Connection error: ${err.message}`);
     });
 
     newSocket.on("game-state", (data) => {
-      console.log("Game state received:", data);
       if (data?.fen) {
         chessGame.load(data.fen);
         setChessPosition(chessGame.fen());
@@ -268,15 +273,8 @@ export default function ChessPage() {
     });
 
     newSocket.on("move-made", (data) => {
-      console.log("Move received:", {
-        dataPlayer: data?.player,
-        username,
-        guestId,
-        isOwnMove: data?.player === username || data?.player === guestId
-      });
       if(data?.player === username || data?.player === guestId) {
-        console.log("Ignoring own move");
-        return; // Ignore your own move
+        return;
       }
       try {
         // Apply opponent's move to actual board
@@ -308,7 +306,6 @@ export default function ChessPage() {
     });
 
     newSocket.on("game-over", (data) => {
-      console.log("Game Over:", data);
       setGameStatus("completed");
 
       if (data?.result) {
@@ -345,8 +342,7 @@ export default function ChessPage() {
           toast.success("Opponent resigned! You win!");
         }
       } else {
-        // Fallback if backend doesn't send resignedPlayerId
-        // This assumes the resign event is only sent to the opponent
+        // Fallback if backend doesn't send resignedPlayerId, assumes the resign event is only sent to the opponent
         setGameResult({
           type: "win",
           message: "Opponent resigned! You win!",
@@ -357,24 +353,22 @@ export default function ChessPage() {
     });
 
     newSocket.on("players-connected", (data) => {
-      console.log("Players connected status:", data);
       if (data?.playersConnected) {
         toast.success("Both players connected");
       }
     });
 
     newSocket.on("error", (err) => {
-      console.error("Server error:", err);
+      console.error("Socket error:", err);
       toast.error(err.message || "Server error occurred");
     });
 
     newSocket.on("move-error", (err) => {
-      console.error("Invalid move:", err);
+      console.error("Move error:", err);
       toast.error(err.message || "Invalid move");
     });
 
     newSocket.on("chat-message", (data) => {
-      console.log("Chat message received:", data);
       if (data?.message) {
         const newMessage: Message = {
           id: `${Date.now()}-${Math.random()}`,
@@ -393,10 +387,36 @@ export default function ChessPage() {
       }
     });
 
+    newSocket.on("draw-offer", (data) => {
+      setIsDrawOffering(false);
+      setDrawOfferFrom(data.from);
+      setShowDrawOffer(true);
+      toast.info(`${data.from} has offered a draw`);
+    });
+
+    newSocket.on("draw-accept", () => {
+      setShowDrawOffer(false);
+      setIsDrawOffering(false);
+      setGameResult({ type: "draw", message: "Game drawn by agreement" });
+      setGameStatus("completed");
+      setIsResultModalOpen(true);
+    });
+
+    newSocket.on("draw-decline", () => {
+      setShowDrawOffer(false);
+      setIsDrawOffering(false);
+      toast.info("Draw offer declined");
+    });
+
+    newSocket.on("draw-cancel", () => {
+      setShowDrawOffer(false);
+      setIsDrawOffering(false);
+      toast.info("Draw offer was canceled");
+    });
+
     setSocket(newSocket);
 
     return () => {
-      console.log("Cleaning up socket");
       newSocket.disconnect();
       newSocket.off("connect");
       newSocket.off("connect_error");
@@ -410,7 +430,7 @@ export default function ChessPage() {
       newSocket.off("chat-message");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerId, username]); // Added dependencies
+  }, [playerId, username]);
 
   // Resize board dynamically
   useEffect(() => {
@@ -439,6 +459,7 @@ export default function ChessPage() {
     setCurrentMoveIndex(moves.length - 1);
   }, [moves]);
 
+  // Move handling
   // Get move options
   function getMoveOptions(square: Square) {
     const moves = chessGame.moves({ square, verbose: true });
@@ -464,6 +485,7 @@ export default function ChessPage() {
     return true;
   }
 
+  // UI event handlers
   // Restrict piece dragging based on player color
   function canDragPiece({ piece }: PieceHandlerArgs): boolean {
     // Can't drag pieces if game is over
@@ -551,14 +573,13 @@ export default function ChessPage() {
           socket.emit("make-move", { gameId, move: moveData });
         }
       } else {
-        console.log("Square click move rejected:", { from: moveFrom, to: square });
         toast.error("Invalid move");
         const hasMoveOptions = getMoveOptions(square as Square);
         setMoveFrom(hasMoveOptions ? square : "");
         return;
       }
     } catch (e) {
-      console.log("Square click move error:", e, { from: moveFrom, to: square });
+      console.error("Error making move on square click:", e);
       toast.error("Invalid move");
       const hasMoveOptions = getMoveOptions(square as Square);
       setMoveFrom(hasMoveOptions ? square : "");
@@ -569,7 +590,6 @@ export default function ChessPage() {
     setOptionSquares({});
   }
 
-  // Helper to smoothly animate premoves back when they become invalid
   // Handle drag drop
   function onPieceDrop({ sourceSquare, targetSquare, piece }: PieceDropHandlerArgs): boolean {
     if (gameStatus === "completed") {
@@ -586,28 +606,12 @@ export default function ChessPage() {
 
     // Clear any stale premoves if it's now the player's turn
     if (isPlayerTurn && premoves.length > 0) {
-      console.log("Clearing stale premoves - it's now player's turn");
       clearPremoves();
     }
 
-    // Check if this is a premove (piece isn't the color of the current player's turn)
-    const pieceColor = piece.pieceType[0]; // 'w' or 'b'
-
-    console.log("Move attempt:", {
-      from: sourceSquare,
-      to: targetSquare,
-      piece: piece.pieceType,
-      currentTurn,
-      playerColor,
-      isPlayerTurn,
-      pieceColor,
-      isPremove: currentTurn !== pieceColor,
-      hasPreview: !!previewPosition,
-      premoveCount: premoves.length
-    });
+    const pieceColor = piece.pieceType[0];
 
     if (currentTurn !== pieceColor) {
-      // PREMOVE CREATION - opponent's turn, player is queuing moves
       // Only allow premoves for the player's own pieces
       const canPremove =
         (playerColor === "white" && pieceColor === "w") ||
@@ -617,7 +621,6 @@ export default function ChessPage() {
         return false;
       }
 
-      // Use the hook's addPremove function for validation and state management
       return addPremove(sourceSquare, targetSquare, piece, playerColor);
     }
 
@@ -635,13 +638,6 @@ export default function ChessPage() {
     );
 
     if (!foundMove) {
-      console.log("Move rejected:", {
-        from: sourceSquare,
-        to: targetSquare,
-        piece: piece.pieceType,
-        possibleMoves: possiblemoves.map(m => `${m.from}-${m.to}`),
-        currentFen: chessGame.fen()
-      });
       toast.error("Invalid move");
       return false;
     }
@@ -683,6 +679,7 @@ export default function ChessPage() {
     }
   }
 
+  // Premove handling
   // Clear premoves on right click with smooth animation
   function onSquareRightClick(_args: SquareHandlerArgs) {
     if (premoves.length > 0) {
@@ -722,44 +719,74 @@ export default function ChessPage() {
     setPromotionMove(null);
   }
 
-  // Handle resign
-  async function handleResign() {
+  function handleResign() {
+    setShowResignConfirm(true);
+  }
+
+  async function executeResign() {
+    setShowResignConfirm(false);
     const gameId = getGameIdFromPath();
     if (!gameId) return;
 
-    console.log("Resign attempt:", { socketConnected: socket?.connected, gameId });
-
-    // STRATEGY: Try socket first (fast), fall back to API (robust)
     if (socket && socket.connected) {
-      console.log("Resigning via WebSocket...");
       socket.emit("resign", gameId);
 
-      // Wait briefly for confirmation, then fall back to API if no response
       const timeout = setTimeout(async () => {
-        console.log("Socket resign timeout - falling back to API");
         const result = await resignGame(gameId);
-        if (result) {
-          console.log("Resign successful via API fallback");
-        }
-      }, 3000); // 3 second timeout
+      }, 3000);
 
-      // Listen for game-resigned event to cancel fallback
       const resignListener = () => {
-        console.log("Resign confirmed via socket");
         clearTimeout(timeout);
         socket.off("game-resigned", resignListener);
       };
 
       socket.once("game-resigned", resignListener);
     } else {
-      // Socket not connected - use API directly
-      console.log("Socket not connected - resigning via API");
       const result = await resignGame(gameId);
       if (result) {
-        console.log("Resign successful via API");
         toast.success("Game resigned");
       }
     }
+  }
+
+  function handleDrawOffer() {
+    const gameId = getGameIdFromPath();
+    if (!gameId || !socket) return;
+
+    setIsDrawOffering(true);
+    setShowDrawOffer(true);
+
+    socket.emit("draw-offer", { gameId, from: username || guestId });
+    toast.info("Draw offer sent");
+  }
+
+  function handleAcceptDraw() {
+    const gameId = getGameIdFromPath();
+    if (!gameId || !socket) return;
+
+    socket.emit("draw-accept", { gameId });
+    setShowDrawOffer(false);
+    toast.success("Draw accepted");
+  }
+
+  function handleDeclineDraw() {
+    const gameId = getGameIdFromPath();
+    if (!gameId || !socket) return;
+
+    socket.emit("draw-decline", { gameId });
+    setShowDrawOffer(false);
+    setIsDrawOffering(false);
+    toast.info("Draw declined");
+  }
+
+  function handleCancelDrawOffer() {
+    const gameId = getGameIdFromPath();
+    if (!gameId || !socket) return;
+
+    socket.emit("draw-cancel", { gameId });
+    setShowDrawOffer(false);
+    setIsDrawOffering(false);
+    toast.info("Draw offer canceled");
   }
 
   function updateMovesFromHistory() {
@@ -786,7 +813,8 @@ export default function ChessPage() {
         try {
           newGame.move(move.white);
         } catch (error) {
-          console.error("Error replaying white move:", move.white, error);
+          console.error("Error replaying white move:", error);
+          // Skip invalid move
         }
       }
       if (i === index && !move.black) break;
@@ -794,7 +822,8 @@ export default function ChessPage() {
         try {
           newGame.move(move.black);
         } catch (error) {
-          console.error("Error replaying black move:", move.black, error);
+          console.error("Error replaying black move:", error);
+          // Skip invalid move
         }
       }
     }
@@ -833,7 +862,7 @@ export default function ChessPage() {
         <h1 className="text-2xl font-bold">Chess</h1>
         <GameControls
           onChatToggle={() => setIsChatOpen(!isChatOpen)}
-          onDrawOffer={() => setShowAnimations(!showAnimations)}
+          onDrawOffer={handleDrawOffer}
           onResign={handleResign}
           gameCompleted={gameStatus === "completed"}
         />
@@ -898,6 +927,28 @@ export default function ChessPage() {
           isGuest={!!guestId}
         />
       )}
+
+      {/* Resign Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showResignConfirm}
+        title="Resign Game"
+        message="Are you sure you want to resign? This will end the game and you will lose."
+        confirmText="Resign"
+        cancelText="Cancel"
+        confirmVariant="destructive"
+        onConfirm={executeResign}
+        onCancel={() => setShowResignConfirm(false)}
+      />
+
+      {/* Draw Offer Dialog */}
+      <DrawOfferDialog
+        isOpen={showDrawOffer}
+        isOffering={isDrawOffering}
+        opponentName={opponent?.username || "Opponent"}
+        onAccept={handleAcceptDraw}
+        onDecline={handleDeclineDraw}
+        onCancel={handleCancelDrawOffer}
+      />
     </div>
   );
 }

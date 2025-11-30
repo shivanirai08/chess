@@ -9,8 +9,9 @@ import axios from "axios";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
-import Cookies from "js-cookie";  
+import Cookies from "js-cookie";
 import { useUserStore } from "@/store/useUserStore";
+import { getAvatarUrl } from "@/utils/avatar";
 
 export default function LogIn() {
   const router = useRouter();
@@ -82,8 +83,12 @@ export default function LogIn() {
           secure: process.env.NODE_ENV === "production", // only send cookie over HTTPS in production
         });
       }
-  
-      setUser({ ...res.data.user, isGuest: false });
+
+      setUser({
+        ...res.data.user,
+        avatar: getAvatarUrl(res.data.user.avatar),
+        isGuest: false
+      });
 
       //remember me functionality
     

@@ -13,6 +13,7 @@ import GameSetup from "@/components/layout/GameSetup";
 import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
 import axios from "axios";
+import { getRandomAvatar, getAvatarUrl } from "@/utils/avatar";
 
 export default function Onboarding() {
   const router = useRouter();
@@ -22,7 +23,7 @@ export default function Onboarding() {
   const [socketId, setSocketId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
-  const [avatar, setAvatar] = useState("/avatar7.svg");
+  const [avatar, setAvatar] = useState(() => getAvatarUrl(getRandomAvatar()));
   const [matchFound, setMatchFound] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [direction, setDirection] = useState<"left" | "right">("right");
@@ -35,40 +36,35 @@ export default function Onboarding() {
     "/avatar4.svg",
     "/avatar5.svg",
     "/avatar6.svg",
+    "/avatar7.svg",
+    "/avatar8.svg",
   ];
 
   useEffect(() => {
     setUser({ username: "You", avatar: "/avatar7.svg", guestId: null });
   }, [setUser]);
 
-  // Reset state when component mounts (coming back from game)
   useEffect(() => {
-    console.log("Onboarding component mounted - resetting state");
     setMatchFound(false);
     setCountdown(5);
     setGameId(null);
     setStep(0);
     setSocketConnected(false);
-    // Clear any existing socket connection
     if (socket) {
       socket.disconnect();
       setSocket(null);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  //**websocket connection function**
   const connectSocket = (guestId: string) => {
     setConnectingSocket(true);
-    console.log("Connecting socket with Guest ID:", guestId);
 
     const newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
       auth: { guestId },
       transports: ["websocket", "polling"],
     });
 
-    // Connection events
     newSocket.on("connect", () => {
-      console.log("Socket connected:", newSocket.id);
       setSocketId(newSocket.id ?? null);
       setSocketConnected(true);
       setConnectingSocket(false);
@@ -82,12 +78,14 @@ export default function Onboarding() {
       toast.error(`Connection error: ${error.message}`);
     });
 
-    // Game events
     newSocket.on('matchmaking-found', (data) => {
-      console.log('Match found!', data.gameId);
       setGameId(data.gameId);
-      console.log("Opponent data:", data.opponent);
-      setOpponent(data.opponent);
+      // Ensure opponent avatar has proper URL format
+      const opponentData = {
+        ...data.opponent,
+        avatar: data.opponent.avatar ? getAvatarUrl(data.opponent.avatar) : getAvatarUrl(getRandomAvatar())
+      };
+      setOpponent(opponentData);
       setMatchFound(true);
       toast.success("Match found!");
     });
@@ -98,7 +96,6 @@ export default function Onboarding() {
     });
 
     newSocket.on("disconnect", (reason) => {
-      console.log("Socket disconnected:", reason);
       setSocketConnected(false);
       if (reason === "io server disconnect") {
         toast.error("Disconnected from server");
@@ -108,33 +105,30 @@ export default function Onboarding() {
     setSocket(newSocket);
   };
 
-  // **Step 1: Register guest and connect socket**
   const handleAvatarNext = async () => {
     try {
-      // Call register endpoint to get guestId
+      // Extract just the filename (e.g., "avatar1.svg" from "/avatar1.svg")
+      const avatarFilename = avatar.startsWith('/') ? avatar.substring(1) : avatar;
+
       const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/guest/register`, {
         guestName: name,
+        avatar: avatarFilename,
       });
       const { guestId } = response.data;
 
-      // Store guestId in user state
       clearUser();
       setUser({ username: name || "You", avatar, guestId });
 
-      // Connect socket with guestId
       connectSocket(guestId);
 
-      // Proceed to next step
       next();
     } catch (error) {
-      console.error("Error registering guest:", error);
+      console.error("Guest registration error:", error);
       toast.error("Failed to register. Please try again.");
     }
   };
 
-  // **Step 2: Join matchmaking with socketId**
   const matchmaking = async () => {
-    // Verify socket is connected
     if (!socketConnected || !socketId) {
       toast.error("Please wait for connection to game server...");
       return;
@@ -146,16 +140,19 @@ export default function Onboarding() {
     }
 
     try {
+      // Extract just the filename (e.g., "avatar1.svg" from "/avatar1.svg")
+      const avatarFilename = avatar.startsWith('/') ? avatar.substring(1) : avatar;
+
       await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/matchmaking/join-guest`, {
         guestId: user.guestId,
         socketId: socketId,
         guestName: name,
+        avatar: avatarFilename,
       });
 
-      // Advance to step 3 (matchmaking screen)
       setStep(3);
     } catch (error) {
-      console.error("Error joining matchmaking:", error);
+      console.error("Matchmaking error:", error);
       if (axios.isAxiosError(error) && error.response?.status === 400) {
         toast.error(error.response.data.message || "Socket not connected");
       } else {
@@ -164,7 +161,6 @@ export default function Onboarding() {
     }
   };
 
-  // Countdown Timer
   useEffect(() => {
     if (matchFound && countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
@@ -173,14 +169,12 @@ export default function Onboarding() {
     if (countdown === 0 && gameId) {
       router.push(`/chess/${gameId}`);
     } else if (countdown === 0 && !gameId) {
-      console.error("Countdown finished but no gameId!");
       toast.error("Failed to start game - no game ID");
       setMatchFound(false);
       setCountdown(5);
     }
   }, [matchFound, countdown, router, gameId]);
 
-  // Question Navigation
   const next = () => {
     if (step < 3) {
       setDirection("right");
@@ -249,7 +243,6 @@ export default function Onboarding() {
             {step === 0 && (
               <div className="flex flex-col items-center w-full">
                 <p className="text-3xl md:text-4xl font-gveher font-bold mb-6 text-center">
-                  {/* What&apos;s your name? */}
                   What should we call you ?
                 </p>
                 <div className="space-y-6 w-full md:w-md">
@@ -343,7 +336,7 @@ export default function Onboarding() {
             {/* Opponent */}
             <div className="flex flex-col items-center">
               <Image
-                src="/avatar8.svg"
+                src={opponent?.avatar || "/avatar8.svg"}
                 alt="Opponent"
                 width={80}
                 height={80}

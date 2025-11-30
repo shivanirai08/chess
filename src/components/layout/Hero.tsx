@@ -214,7 +214,8 @@ export default function Hero() {
             >
               Play Now
             </Button>
-            <Button variant="secondary">Explore More</Button>
+            <Button variant="secondary" 
+            onClick={() => {window.location.href = "/signup"}}>Explore More</Button>
           </div>
 
           {/* mobile hero img */}

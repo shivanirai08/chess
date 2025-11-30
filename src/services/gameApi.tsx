@@ -11,7 +11,7 @@ export const getToken = () => {
   }
 };
 
-//Fetch game state from the server
+// Fetch game state from the server
 export const fetchGameState = async (gameId: string, guestId?: string) => {
   const token = getToken();
   if (!token && !guestId) {
@@ -104,7 +104,7 @@ export const resignGame = async (gameId: string, guestId?: string) => {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error("Error resigning:", error);
+    console.error("Error resigning game:", error);
     toast.error("Network error while resigning");
     return null;
   }
