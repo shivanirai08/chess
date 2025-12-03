@@ -22,6 +22,9 @@ export default function PlayPage() {
   const [countdown, setCountdown] = useState(5);
   const [gameId, setGameId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [timeControl, setTimeControl] = useState<string>("");
+  const [waitingTime, setWaitingTime] = useState<number>(0);
+  const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const { user: { username, avatar: userAvatar } , setOpponent, opponent } = useUserStore();
 
 
@@ -129,12 +132,17 @@ export default function PlayPage() {
       return;
     }
 
+    if (!timeControl) {
+      toast.error("Time control not selected. Please go back and select a time control.");
+      return;
+    }
+
     try {
       // First check matchmaking status through API
       const token = getToken();
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/game/matchmaking/join`,
-        {},
+        { timeControl },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -162,13 +170,41 @@ export default function PlayPage() {
     }
   };
 
-  const next = async () => {
-    if (step === 0) {
+  const next = async (selectedTimeControl?: string) => {
+    if (step === 0 && selectedTimeControl) {
+      setTimeControl(selectedTimeControl);
       setDirection("right");
       setStep(1);
-      await startMatchmaking();
     }
   };
+
+  // Start matchmaking when step changes to 1 and timeControl is set
+  useEffect(() => {
+    if (step === 1 && timeControl) {
+      console.log("Starting matchmaking with time control:", timeControl);
+      startMatchmaking();
+      setWaitingTime(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, timeControl]);
+
+  // Track waiting time and show timeout modal after 3 minutes
+  useEffect(() => {
+    if (step === 1 && !matchFound) {
+      const interval = setInterval(() => {
+        setWaitingTime((prev) => {
+          const newTime = prev + 1;
+          if (newTime >= 180) { // 3 minutes = 180 seconds
+            clearInterval(interval);
+            setShowTimeoutModal(true);
+          }
+          return newTime;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [step, matchFound]);
 
   const prev = () => {
     if (step > 0) {
@@ -205,8 +241,8 @@ export default function PlayPage() {
             <ArrowLeft />
           </button>
           <button
-            onClick={next}
-            disabled={step === 1}
+            onClick={() => next()}
+            disabled={step === 1 || !timeControl}
             className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30"
           >
             <ArrowRight />
@@ -267,6 +303,40 @@ export default function PlayPage() {
           <p className="mt-10 text-4xl font-bold animate-pulse">
             Match starts in {countdown}...
           </p>
+        </div>
+      )}
+
+      {/* Timeout modal */}
+      {showTimeoutModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-xl p-8 max-w-md text-center">
+            <h2 className="text-2xl font-bold mb-4">No Opponent Found</h2>
+            <p className="text-gray-400 mb-6">
+              We couldn&apos;t find an opponent with the selected time control ({timeControl}).
+              Try selecting a different time control for better matchmaking.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  setShowTimeoutModal(false);
+                  setStep(0);
+                  setWaitingTime(0);
+                }}
+                className="flex-1 px-6 py-3 bg-primary text-black rounded-lg font-semibold hover:bg-primary/90 transition"
+              >
+                Choose Different Time
+              </button>
+              <button
+                onClick={() => {
+                  setShowTimeoutModal(false);
+                  router.push("/dashboard");
+                }}
+                className="flex-1 px-6 py-3 bg-zinc-800 rounded-lg font-semibold hover:bg-zinc-700 transition"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

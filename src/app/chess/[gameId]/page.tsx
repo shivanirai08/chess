@@ -54,6 +54,12 @@ export default function ChessPage() {
   const [gameStatus, setGameStatus] = useState<string>("active");
   const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
+
+  // Timer states
+  const [whiteTime, setWhiteTime] = useState<number>(600); // in seconds
+  const [blackTime, setBlackTime] = useState<number>(600); // in seconds
+  const [increment, setIncrement] = useState<number>(0); // in seconds
+  const [isTimerActive, setIsTimerActive] = useState<boolean>(false);
   const [isResultModalOpen, setIsResultModalOpen] = useState(false);
   const [gameResult, setGameResult] = useState<{
     type: "win" | "loss" | "draw" | "abandoned";
@@ -96,6 +102,13 @@ export default function ChessPage() {
     setChatMessages((prev) => [...prev, message]);
   };
 
+  // Helper to format time in MM:SS format
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   // Helper to set game result
   const setGameResultHelper = (result: string, whitePlayerId: string, blackPlayerId: string, whitePlayerName: string, blackPlayerName: string) => {
     if (result === "white_wins") {
@@ -132,16 +145,29 @@ export default function ChessPage() {
         const { game } = gameData;
 
         // Determine player color and set board orientation
-        const whiteId = String(game.whitePlayerId);
-        const blackId = String(game.blackPlayerId);
-        const currentId = String(playerId);
+        const whiteId = String(game.whitePlayerId).trim();
+        const blackId = String(game.blackPlayerId).trim();
+        const currentId = String(playerId).trim();
+
+        console.log('=== Player Color Determination ===');
+        console.log('White Player ID:', whiteId);
+        console.log('Black Player ID:', blackId);
+        console.log('Current Player ID:', currentId);
+        console.log('Is Guest:', !!guestId);
 
         if (whiteId === currentId) {
+          console.log('Setting player as WHITE');
           setPlayerColor("white");
           setBoardOrientation("white");
         } else if (blackId === currentId) {
+          console.log('Setting player as BLACK');
           setPlayerColor("black");
           setBoardOrientation("black");
+        } else {
+          console.error('ERROR: Player ID does not match white or black player!');
+          console.error('This should not happen. Defaulting to white.');
+          setPlayerColor("white");
+          setBoardOrientation("white");
         }
 
         // Reset chess game to starting position
@@ -207,6 +233,29 @@ export default function ChessPage() {
           }
         }
 
+        // Parse and initialize timers from timeControl
+        if (game.timeControl) {
+          const timeControlParts = game.timeControl.split("|");
+          if (timeControlParts.length >= 1) {
+            // Parse time in minutes
+            const minutes = parseInt(timeControlParts[0].replace(/[^0-9]/g, ""));
+            const seconds = minutes * 60;
+            setWhiteTime(seconds);
+            setBlackTime(seconds);
+
+            // Parse increment if present
+            if (timeControlParts.length === 2) {
+              const inc = parseInt(timeControlParts[1].replace(/[^0-9]/g, ""));
+              setIncrement(inc);
+            }
+
+            // Activate timer if game is active
+            if (game.status === "active") {
+              setIsTimerActive(true);
+            }
+          }
+        }
+
         // Show game status if game is over
         if (game.status === "completed" && game.result) {
           setGameResultHelper(
@@ -253,6 +302,9 @@ export default function ChessPage() {
     });}
 
     newSocket.on("connect", () => {
+      console.log('Socket connected, joining game:', gameId);
+      console.log('Player ID:', playerId);
+      console.log('Is Guest:', !!guestId);
       newSocket.emit("join-game", gameId);
     });
 
@@ -262,6 +314,7 @@ export default function ChessPage() {
     });
 
     newSocket.on("game-state", (data) => {
+      console.log('Received game-state event:', data);
       if (data?.fen) {
         chessGame.load(data.fen);
         setChessPosition(chessGame.fen());
@@ -273,9 +326,16 @@ export default function ChessPage() {
     });
 
     newSocket.on("move-made", (data) => {
+      console.log('Received move-made event:', data);
+      console.log('Current username:', username);
+      console.log('Current guestId:', guestId);
+      console.log('Move from player:', data?.player);
+
       if(data?.player === username || data?.player === guestId) {
+        console.log('Ignoring own move');
         return;
       }
+      console.log('Applying opponent move');
       try {
         // Apply opponent's move to actual board
         if (data?.move) {
@@ -342,7 +402,8 @@ export default function ChessPage() {
           toast.success("Opponent resigned! You win!");
         }
       } else {
-        // Fallback if backend doesn't send resignedPlayerId, assumes the resign event is only sent to the opponent
+        // Fallback if backend doesn't send resignedPlayerId
+        // This assumes the resign event is only sent to the opponent
         setGameResult({
           type: "win",
           message: "Opponent resigned! You win!",
@@ -458,6 +519,53 @@ export default function ChessPage() {
   useEffect(() => {
     setCurrentMoveIndex(moves.length - 1);
   }, [moves]);
+
+  // Timer countdown logic
+  useEffect(() => {
+    if (!isTimerActive || gameStatus !== "active") {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const currentTurn = chessGame.turn(); // 'w' for white, 'b' for black
+
+      if (currentTurn === 'w') {
+        setWhiteTime((prevTime) => {
+          if (prevTime <= 0) {
+            // White runs out of time, black wins
+            clearInterval(interval);
+            setIsTimerActive(false);
+            setGameStatus("completed");
+            setGameResult({
+              type: playerColor === "black" ? "win" : "loss",
+              message: playerColor === "black" ? "You win! Opponent ran out of time" : "You lost! Time's up"
+            });
+            setIsResultModalOpen(true);
+            return 0;
+          }
+          return prevTime - 1;
+        });
+      } else {
+        setBlackTime((prevTime) => {
+          if (prevTime <= 0) {
+            // Black runs out of time, white wins
+            clearInterval(interval);
+            setIsTimerActive(false);
+            setGameStatus("completed");
+            setGameResult({
+              type: playerColor === "white" ? "win" : "loss",
+              message: playerColor === "white" ? "You win! Opponent ran out of time" : "You lost! Time's up"
+            });
+            setIsResultModalOpen(true);
+            return 0;
+          }
+          return prevTime - 1;
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isTimerActive, gameStatus, chessGame, playerColor]);
 
   // Move handling
   // Get move options
@@ -660,6 +768,15 @@ export default function ChessPage() {
         // Move was successful
         setChessPosition(chessGame.fen());
         updateMovesFromHistory();
+
+        // Add time increment for the player who just moved
+        if (increment > 0) {
+          if (playerColor === "white") {
+            setWhiteTime((prev) => prev + increment);
+          } else {
+            setBlackTime((prev) => prev + increment);
+          }
+        }
 
         const gameId = getGameIdFromPath();
         if (gameId && socket) {
@@ -888,6 +1005,7 @@ export default function ChessPage() {
                 avatar={user?.avatar ?? "/avatar7.svg"}
                 isCurrentPlayer={true}
                 isMyTurn={isMyTurn}
+                timeRemaining={formatTime(playerColor === "white" ? whiteTime : blackTime)}
               />
               <div className="flex justify-center text-gray-400">vs</div>
               <PlayerInfo
@@ -895,6 +1013,7 @@ export default function ChessPage() {
                 avatar={opponent?.avatar || "/avatar8.svg"}
                 isCurrentPlayer={false}
                 isMyTurn={!isMyTurn}
+                timeRemaining={formatTime(playerColor === "white" ? blackTime : whiteTime)}
               />
             </div>
 

@@ -29,6 +29,9 @@ export default function Onboarding() {
   const [direction, setDirection] = useState<"left" | "right">("right");
   const [socketConnected, setSocketConnected] = useState(false);
   const [connectingSocket, setConnectingSocket] = useState(false);
+  const [timeControl, setTimeControl] = useState<string>("");
+  const [waitingTime, setWaitingTime] = useState<number>(0);
+  const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const avatars = [
     "/avatar1.svg",
     "/avatar2.svg",
@@ -139,6 +142,11 @@ export default function Onboarding() {
       return;
     }
 
+    if (!timeControl) {
+      toast.error("Time control not selected. Please go back and select a time control.");
+      return;
+    }
+
     try {
       // Extract just the filename (e.g., "avatar1.svg" from "/avatar1.svg")
       const avatarFilename = avatar.startsWith('/') ? avatar.substring(1) : avatar;
@@ -148,6 +156,7 @@ export default function Onboarding() {
         socketId: socketId,
         guestName: name,
         avatar: avatarFilename,
+        timeControl,
       });
 
       setStep(3);
@@ -160,6 +169,33 @@ export default function Onboarding() {
       }
     }
   };
+
+  // Start matchmaking when step changes to 3 and timeControl is set
+  useEffect(() => {
+    if (step === 3 && timeControl && socketConnected && !matchFound) {
+      matchmaking();
+      setWaitingTime(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, timeControl, socketConnected]);
+
+  // Track waiting time and show timeout modal after 3 minutes
+  useEffect(() => {
+    if (step === 3 && !matchFound) {
+      const interval = setInterval(() => {
+        setWaitingTime((prev) => {
+          const newTime = prev + 1;
+          if (newTime >= 180) { // 3 minutes = 180 seconds
+            clearInterval(interval);
+            setShowTimeoutModal(true);
+          }
+          return newTime;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [step, matchFound]);
 
   useEffect(() => {
     if (matchFound && countdown > 0) {
@@ -305,7 +341,10 @@ export default function Onboarding() {
               </div>
             )}
             {step === 2 && (
-              <GameSetup next={matchmaking}  />
+              <GameSetup next={(selectedTimeControl: string) => {
+                setTimeControl(selectedTimeControl);
+                setStep(3);
+              }}  />
             )}
 
             {step === 3 && (
@@ -350,6 +389,40 @@ export default function Onboarding() {
           <p className="mt-10 text-4xl font-bold animate-pulse">
             Match starts in {countdown}...
           </p>
+        </div>
+      )}
+
+      {/* Timeout modal */}
+      {showTimeoutModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-xl p-8 max-w-md text-center">
+            <h2 className="text-2xl font-bold mb-4">No Opponent Found</h2>
+            <p className="text-gray-400 mb-6">
+              We couldn&apos;t find an opponent with the selected time control ({timeControl}).
+              Try selecting a different time control for better matchmaking.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  setShowTimeoutModal(false);
+                  setStep(2);
+                  setWaitingTime(0);
+                }}
+                className="flex-1 px-6 py-3 bg-primary text-black rounded-lg font-semibold hover:bg-primary/90 transition"
+              >
+                Choose Different Time
+              </button>
+              <button
+                onClick={() => {
+                  setShowTimeoutModal(false);
+                  router.push("/");
+                }}
+                className="flex-1 px-6 py-3 bg-zinc-800 rounded-lg font-semibold hover:bg-zinc-700 transition"
+              >
+                Back to Home
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

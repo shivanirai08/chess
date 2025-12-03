@@ -201,7 +201,7 @@ export default function Hero() {
 
           <p className="animate-item font-gveher font-normal text-lg md:text-xl lg:text-2xl text-white/70 mb-8 max-w-3xl mx-auto md:mt-12 mt-4 text-left md:text-center">
             A new era of chess: only pawns and kings. Protect, push, and
-            promote your way to checkmate — simple to start, thrilling to
+            promote your way to checkmate, simple to start, thrilling to
             master.
           </p>
 

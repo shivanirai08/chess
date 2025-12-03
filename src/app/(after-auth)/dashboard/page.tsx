@@ -60,15 +60,15 @@ export default function Dashboard() {
   };
 
   const timeControls = [
-    { time: "1|0", icon: BulletIcon },
+    { time: "1 min", icon: BulletIcon },
     { time: "1|1", icon: BulletIcon },
     { time: "2|1", icon: BulletIcon },
-    { time: "3|0", icon: BlitzIcon },
+    { time: "3 min", icon: BlitzIcon },
     { time: "3|2", icon: BlitzIcon },
-    { time: "5|0", icon: BlitzIcon },
-    { time: "5|3", icon: RapidIcon },
-    { time: "10|0", icon: RapidIcon },
-    { time: "10|5", icon: RapidIcon },
+    { time: "5 min", icon: BlitzIcon },
+    { time: "10 min", icon: RapidIcon },
+    { time: "15|10", icon: RapidIcon },
+    { time: "30 min", icon: RapidIcon },
   ];
 
   const completedGames = [
@@ -241,7 +241,7 @@ export default function Dashboard() {
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.3, delay: 0.1 + index * 0.05 }}
-                      className="bg-white/5 backdrop-blur-xs flex-1 rounded-lg p-4 transition-all duration-300 relative overflow-hidden cursor-pointer"
+                      className="bg-white/5 backdrop-blur-xs flex-1 rounded-lg p-4 transition-all duration-300 relative overflow-hidden"
                     >
                       {/* <div className="absolute -top-2 -right-2 opacity-10 pointer-events-none">
                         <Icon size={100} style={{ color: "#5d5a5aff"}} />

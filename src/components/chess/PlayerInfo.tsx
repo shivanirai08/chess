@@ -37,7 +37,7 @@ export function PlayerInfo({
       <span
         className={`px-2 py-1 rounded transition-all duration-300 text-sm sm:text-base ${
           isMyTurn
-            ? "bg-primary text-white font-bold shadow-lg shadow-primary/50 animate-pulse"
+            ? "bg-primary text-black font-bold shadow-lg shadow-primary/50 animate-pulse"
             : "bg-zinc-900"
         }`}
       >

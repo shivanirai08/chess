@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Button from "@/components/ui/Button";
 
-export default function GameSetup({ next }: { next: () => void }) {
+export default function GameSetup({ next }: { next: (timeControl: string) => void }) {
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const [selectedTime, setTime] = useState<string | null>(null);
 
@@ -81,7 +81,7 @@ export default function GameSetup({ next }: { next: () => void }) {
 
         {/* Continue Button */}
         <Button
-          onClick={next}
+          onClick={() => selectedTime && next(selectedTime)}
           disabled={!selectedMode || !selectedTime}
           type="submit"
           variant="primary"
