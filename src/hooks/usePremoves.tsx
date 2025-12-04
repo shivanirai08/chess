@@ -39,7 +39,7 @@ export function usePremoves(chessGame: Chess) {
       sourceSquare: string,
       targetSquare: string,
       piece: PieceDropHandlerArgs["piece"],
-      _playerColor: "white" | "black"
+      playerColor: "white" | "black"
     ): boolean => {
       const currentFen = previewPosition || chessGame.fen();
       const testBoard = new Chess(currentFen);

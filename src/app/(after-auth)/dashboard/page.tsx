@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Settings, Trophy, ChevronLeft, ChevronRight, Zap } from "lucide-react";
+import { Settings, Trophy, ChevronLeft, ChevronRight, Zap, CircleEqual, X } from "lucide-react";
 import { TbTargetArrow } from "react-icons/tb"
 import { FaChess, FaFire } from "react-icons/fa";
 
@@ -29,11 +29,14 @@ import { useUserStore } from "@/store/useUserStore";
 import Cookies from "js-cookie";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import axios from "axios";
 
 export default function Dashboard() {
   const router = useRouter();
   const { clearUser, user } = useUserStore();
   const [welcomeMessage, setWelcomeMessage] = useState("Welcome back");
+  const [games, setGames] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Weekly stats states
   const [selectedWeek, setSelectedWeek] = useState(0); // 0 = current week, -1 = last week, etc.
@@ -47,6 +50,58 @@ export default function Dashboard() {
       setWelcomeMessage(isNewUser ? "Welcome" : "Welcome back");
     }
   }, []);
+
+  useEffect(() => {
+    const fetchGames = async () => {
+      try {
+        setLoading(true);
+        const res = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/games`, {
+          headers: {
+            Authorization: `Bearer ${Cookies.get("auth-token")}`,
+          },
+        });
+        
+        // Transform backend response to match UI format
+        const transformedGames = (res.data.games || []).map((game: any) => {
+          const isWhitePlayer = game.whitePlayerId === user.id;
+          const opponentName = isWhitePlayer ? game.blackPlayerName : game.whitePlayerName;
+          const opponentRating = 1500; // Default rating, update when available from backend
+          
+          // Determine result from player's perspective
+          let result = "draw";
+          if (game.status === "completed") {
+            if (game.result === "white_wins") {
+              result = isWhitePlayer ? "win" : "loss";
+            } else if (game.result === "black_wins") {
+              result = isWhitePlayer ? "loss" : "win";
+            }
+          }
+
+          return {
+            username: opponentName,
+            rating: opponentRating,
+            result: result,
+            accuracy: 0, // Calculate or get from backend
+            moves: game.moves?.length || 0,
+            date: new Date(game.createdAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            }),
+            gameId: game._id,
+          };
+        });
+        
+        setGames(transformedGames);
+      } catch (err) {
+        console.error("Failed to fetch games", err);
+        setGames([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchGames();
+  }, [user.id]);
 
   const handleLogout = () => {
     try {
@@ -71,48 +126,6 @@ export default function Dashboard() {
     { time: "30 min", icon: RapidIcon },
   ];
 
-  const completedGames = [
-    {
-      username: "ChessMaster_99",
-      rating: 2580,
-      result: "win",
-      accuracy: 94.2,
-      moves: 42,
-      date: "Nov 28, 2025",
-    },
-    {
-      username: "QueenGambit2024",
-      rating: 2610,
-      result: "loss",
-      accuracy: 87.5,
-      moves: 38,
-      date: "Nov 28, 2025",
-    },
-    {
-      username: "RookieKnight",
-      rating: 2420,
-      result: "draw",
-      accuracy: 91.8,
-      moves: 56,
-      date: "Nov 27, 2025",
-    },
-    {
-      username: "TacticalGenius",
-      rating: 2455,
-      result: "win",
-      accuracy: 88.1,
-      moves: 34,
-      date: "Nov 27, 2025",
-    },
-    {
-      username: "EndgameExpert",
-      rating: 2490,
-      result: "win",
-      accuracy: 93.4,
-      moves: 48,
-      date: "Nov 26, 2025",
-    },
-  ];
 
   const gameStats = [
     { type: "Overall", icon: Trophy, played: 249, wins: 138, winRate: 55, color: "#10b981" }, // Green
@@ -208,14 +221,14 @@ export default function Dashboard() {
               {/* ELO */}
               <div className="bg-white/5 backdrop-blur-xs rounded-lg p-4 flex flex-col items-end justify-center gap-2 h-20 relative overflow-hidden">
                 <TbTargetArrow size={90} className="text-[#a855f7] opacity-50 absolute -top-1 -left-2" />
-                <span className="text-4xl font-bold">344</span>
+                <span className="text-4xl font-bold">{user.elo || 300}</span>
                 <span className="text-sm text-[#a0a0a0]">ELO</span>
               </div>
 
               {/* Games */}
               <div className="bg-white/5 backdrop-blur-xs rounded-lg p-4 flex flex-col items-end justify-center gap-2 relative h-20 overflow-hidden">
                 <FaChess size={80} className="text-primary opacity-50 absolute top-0 left-0" />
-                <span className="text-4xl font-bold">1,247</span>
+                <span className="text-4xl font-bold">{games.length}</span>
                 <span className="text-sm text-[#a0a0a0]">Games</span>
               </div>
 
@@ -292,60 +305,70 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
-            className="bg-white/10 p-6 rounded-xl overflow-hidden flex flex-col"
+            className="bg-white/5 backdrop-blur-xs p-6 rounded-xl overflow-hidden flex flex-col h-full"
           >
             <h2 className="text-lg font-bold mb-4">Completed Games</h2>
 
             <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
-              {completedGames.map((game, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, delay: 0.3 + index * 0.05 }}
-                  className={`h-18 rounded-lg py-2 px-4 flex items-center justify-between cursor-pointer transition-all duration-200 border ${
-                    game.result === "win"
-                      ? "border-[#10b981] hover:bg-[#1a3a2a]"
-                      : game.result === "loss"
-                      ? "border-[#ef4444] hover:bg-[#3a1a1a]"
-                      : "hover:bg-[#2a2a2a]"
-                  }`}
-                  onClick={() => toast.info("Game review coming soon...")}
-                >
-                  {/* Left Side - Opponent Info */}
-                  <div className="flex items-center gap-3">
-                    <div>
-                      {game.result === "win" ? (
-                        <Trophy size={20} className="text-[#10b981]" />
-                      ) : game.result === "loss" ? (
-                        <div className="w-5 h-5 text-red-500 font-bold">✕</div>
-                      ) : (
-                        <div className="w-5 h-5 rounded-full border-2 border-[#a0a0a0]" />
-                      )}
+              {loading ? (
+                <div className="flex items-center justify-center h-32">
+                  <p className="text-gray-400">Loading games...</p>
+                </div>
+              ) : games.length === 0 ? (
+                <div className="flex items-center justify-center h-32">
+                  <p className="text-gray-400">No completed games yet</p>
+                </div>
+              ) : (
+                games.map((game, index) => (
+                  <motion.div
+                    key={game.gameId || index}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3, delay: 0.3 + index * 0.05 }}
+                    className={`h-18 rounded-lg py-2 px-4 flex items-center justify-between cursor-pointer transition-all duration-200 border ${
+                      game.result === "win"
+                        ? "border-[#10b981] hover:bg-[#1a3a2a]"
+                        : game.result === "loss"
+                        ? "border-[#ef4444] hover:bg-[#3a1a1a]"
+                        : "hover:bg-[#2a2a2a]"
+                    }`}
+                    onClick={() => toast.info("Game review coming soon...")}
+                  >
+                    {/* Left Side - Opponent Info */}
+                    <div className="flex items-center gap-3">
+                      <div>
+                        {game.result === "win" ? (
+                          <Trophy size={20} className="text-[#10b981]" />
+                        ) : game.result === "loss" ? (
+                          <X size={20} className="text-[#ef4444]" />
+                        ) : (
+                          <CircleEqual size={20} className="text-[#a0a0a0]" />
+                        )}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold">{game.username}</span>
+                        <span className="text-xs text-[#a0a0a0]">{game.rating}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold">{game.username}</span>
-                      <span className="text-xs text-[#a0a0a0]">{game.rating}</span>
-                    </div>
-                  </div>
 
-                  {/* Right Side - Game Stats */}
-                  <div className="hidden md:flex items-center gap-6">
-                    <div className="flex flex-col items-center">
-                      <span className="text-[10px] text-[#a0a0a0]">Accuracy</span>
-                      <span className="text-sm">{game.accuracy}%</span>
+                    {/* Right Side - Game Stats */}
+                    <div className="hidden md:flex items-center gap-6">
+                        <div className="flex flex-col items-center">
+                          <span className="text-[10px] text-[#a0a0a0]">Result</span>
+                          <span className="text-sm">{game.result}</span>
+                        </div>
+                      <div className="flex flex-col items-center">
+                        <span className="text-[10px] text-[#a0a0a0]">Moves</span>
+                        <span className="text-sm">{game.moves}</span>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <span className="text-[10px] text-[#a0a0a0]">Date</span>
+                        <span className="text-sm">{game.date}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-[10px] text-[#a0a0a0]">Moves</span>
-                      <span className="text-sm">{game.moves}</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-[10px] text-[#a0a0a0]">Date</span>
-                      <span className="text-sm">{game.date}</span>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                ))
+              )}
             </div>
           </motion.section>
         </div>
@@ -408,7 +431,7 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
-            className=" rounded-xl p-4 flex-1 flex flex-col bg-white/10"
+            className=" rounded-xl p-4 flex-1 flex flex-col bg-white/5 backdrop-blur-xs"
           >
             {/* Header with Week Navigation */}
             <div className="flex items-center justify-between mb-6">

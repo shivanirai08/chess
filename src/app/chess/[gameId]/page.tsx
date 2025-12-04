@@ -48,7 +48,7 @@ export default function ChessPage() {
 
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
-  const [showAnimations, _setShowAnimations] = useState(true);
+  const [showAnimations] = useState(true);
   const [moves, setMoves] = useState<{ moveNumber: number; white?: string; black?: string }[]>([]);
   const [currentMoveIndex, setCurrentMoveIndex] = useState(() => moves.length - 1);
   const [gameStatus, setGameStatus] = useState<string>("active");
@@ -798,7 +798,7 @@ export default function ChessPage() {
 
   // Premove handling
   // Clear premoves on right click with smooth animation
-  function onSquareRightClick(_args: SquareHandlerArgs) {
+  function onSquareRightClick() {
     if (premoves.length > 0) {
       animatePremovesBack();
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import { io, Socket } from "socket.io-client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -14,7 +14,7 @@ import Cookies from "js-cookie";
 import { useUserStore } from "@/store/useUserStore";
 import { getRandomAvatar, getAvatarUrl } from "@/utils/avatar";
 
-export default function PlayPage() {
+function PlayPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [step, setStep] = useState(0);
@@ -375,5 +375,17 @@ export default function PlayPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PlayPage() {
+  return (
+    <Suspense fallback={
+      <div className="relative h-screen flex flex-col items-center justify-center overflow-hidden text-white">
+        <div className="text-xl">Loading...</div>
+      </div>
+    }>
+      <PlayPageContent />
+    </Suspense>
   );
 }
