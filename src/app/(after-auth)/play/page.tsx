@@ -4,7 +4,7 @@ import { io, Socket } from "socket.io-client";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import GameSetup from "@/components/layout/GameSetup";
 import MatchmakingStep from "@/components/layout/Matchmakingstep";
@@ -16,6 +16,7 @@ import { getRandomAvatar, getAvatarUrl } from "@/utils/avatar";
 
 export default function PlayPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<"left" | "right">("right");
   const [matchFound, setMatchFound] = useState(false);
@@ -25,6 +26,8 @@ export default function PlayPage() {
   const [timeControl, setTimeControl] = useState<string>("");
   const [waitingTime, setWaitingTime] = useState<number>(0);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
+  const [isStartingFromDashboard, setIsStartingFromDashboard] = useState(false);
+  const [pendingMatchmaking, setPendingMatchmaking] = useState(false);
   const { user: { username, avatar: userAvatar } , setOpponent, opponent } = useUserStore();
 
 
@@ -57,11 +60,19 @@ export default function PlayPage() {
       newSocket.on("connect", () => {
         console.log("Socket connected:", newSocket.id);
         toast.success("Connected to game server");
+        setSocket(newSocket);
+        
+        // If there's pending matchmaking from dashboard, trigger it now
+        if (pendingMatchmaking) {
+          console.log("Socket connected, triggering pending matchmaking");
+          setPendingMatchmaking(false);
+        }
       });
 
       newSocket.on("connect_error", (error) => {
         console.error("Socket connection error:", error);
         toast.error(`Connection error: ${error.message}`);
+        setPendingMatchmaking(false);
       });
 
       // Game events
@@ -92,7 +103,8 @@ export default function PlayPage() {
         }
       });
 
-      setSocket(newSocket);
+      // Don't set socket here, set it in connect event
+      // setSocket(newSocket);
 
       // Cleanup on unmount or step change
       return () => {
@@ -178,15 +190,33 @@ export default function PlayPage() {
     }
   };
 
-  // Start matchmaking when step changes to 1 and timeControl is set
+  // Check for query parameters from dashboard shortcut
   useEffect(() => {
-    if (step === 1 && timeControl) {
+    const timeControlParam = searchParams.get("timeControl");
+    const autoStart = searchParams.get("autoStart");
+
+    if (timeControlParam && autoStart === "true") {
+      console.log("Starting matchmaking from dashboard with time control:", timeControlParam);
+      setTimeControl(timeControlParam);
+      setIsStartingFromDashboard(true);
+      setDirection("right");
+      setStep(1);
+      setPendingMatchmaking(true); // Mark that we need to start matchmaking once socket connects
+      
+      // Clean up URL
+      router.replace("/play", { scroll: false });
+    }
+  }, [searchParams, router]);
+
+  // Start matchmaking when socket is ready and conditions are met
+  useEffect(() => {
+    if (step === 1 && timeControl && socket?.connected) {
       console.log("Starting matchmaking with time control:", timeControl);
       startMatchmaking();
       setWaitingTime(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, timeControl]);
+  }, [step, timeControl, socket?.connected]);
 
   // Track waiting time and show timeout modal after 3 minutes
   useEffect(() => {
@@ -208,6 +238,11 @@ export default function PlayPage() {
 
   const prev = () => {
     if (step > 0) {
+      // Don't allow going back if started from dashboard
+      if (isStartingFromDashboard && step === 1) {
+        router.push("/dashboard");
+        return;
+      }
       setDirection("left");
       setStep(step - 1);
     }

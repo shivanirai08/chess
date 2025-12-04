@@ -143,8 +143,8 @@ export default function Dashboard() {
   const maxValue = Math.max(...currentWeekData[selectedMetric]);
 
   const handleStartGame = (timeControl: string) => {
-    toast.info(`Starting ${timeControl} game...`);
-    router.push("/play");
+    // Navigate to play page with time control and step parameters
+    router.push(`/play?timeControl=${encodeURIComponent(timeControl)}&autoStart=true`);
   };
 
   const getWeekLabel = (weekOffset: number) => {
@@ -214,7 +214,7 @@ export default function Dashboard() {
 
               {/* Games */}
               <div className="bg-white/5 backdrop-blur-xs rounded-lg p-4 flex flex-col items-end justify-center gap-2 relative h-20 overflow-hidden">
-                <FaChess size={80} className="text-primary opacity-50 absolute -top-0 -left-1" />
+                <FaChess size={80} className="text-primary opacity-50 absolute top-0 left-0" />
                 <span className="text-4xl font-bold">1,247</span>
                 <span className="text-sm text-[#a0a0a0]">Games</span>
               </div>
@@ -385,7 +385,7 @@ export default function Dashboard() {
             <div className="flex gap-3">
               {/* Custom Button */}
               <button
-                onClick={() => toast.info("Custom game setup coming soon...")}
+                onClick={() => window.location.href = '/play'}
                 className="flex-1 h-12 border border-gray-500 rounded-lg hover:bg-primary
                 hover:text-black hover:border-none font-medium hover:font-semibold transition-all duration-200 cursor-pointer"
               >
