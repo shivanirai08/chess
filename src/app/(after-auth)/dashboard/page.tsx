@@ -6,6 +6,9 @@ import { toast } from "sonner";
 import { Settings, Trophy, ChevronLeft, ChevronRight, Zap, CircleEqual, X } from "lucide-react";
 import { TbTargetArrow } from "react-icons/tb"
 import { FaChess, FaFire } from "react-icons/fa";
+import { motion } from "framer-motion";
+import axios from "axios";
+import { fetchGameSummaries, GameSummaryResponse } from "@/services/gameApi";
 
 // Custom Chess Time Control Icons
 const BulletIcon = ({ size = 16, className = "", style }: { size?: number; className?: string; style?: React.CSSProperties }) => (
@@ -27,16 +30,50 @@ const RapidIcon = ({ size = 16, className = "", style }: { size?: number; classN
 );
 import { useUserStore } from "@/store/useUserStore";
 import Cookies from "js-cookie";
-import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import axios from "axios";
+
+
+interface GameData {
+  _id: string;
+  whitePlayerId: string;
+  blackPlayerId: string;
+  whitePlayerName: string;
+  blackPlayerName: string;
+  status: string;
+  result?: string;
+  moves?: string[];
+  createdAt: string;
+}
+
+interface TransformedGame {
+  username: string;
+  rating: number | null;
+  playerElo: number | null;
+  result: string;
+  accuracy: number;
+  moves: number;
+  date: string;
+  gameId: string;
+  playerColor: 'white' | 'black';
+}
+
+interface PerformanceData {
+  format: string;
+  played: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  winRate: number;
+}
 
 export default function Dashboard() {
   const router = useRouter();
-  const { clearUser, user } = useUserStore();
+  const { clearUser, user, setUser } = useUserStore();
   const [welcomeMessage, setWelcomeMessage] = useState("Welcome back");
-  const [games, setGames] = useState<any[]>([]);
+  const [games, setGames] = useState<TransformedGame[]>([]);
   const [loading, setLoading] = useState(true);
+  const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
+  const [performanceLoading, setPerformanceLoading] = useState(true);
 
   // Weekly stats states
   const [selectedWeek, setSelectedWeek] = useState(0); // 0 = current week, -1 = last week, etc.
@@ -55,53 +92,59 @@ export default function Dashboard() {
     const fetchGames = async () => {
       try {
         setLoading(true);
-        const res = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/games`, {
-          headers: {
-            Authorization: `Bearer ${Cookies.get("auth-token")}`,
-          },
-        });
-        
-        // Transform backend response to match UI format
-        const transformedGames = (res.data.games || []).map((game: any) => {
-          const isWhitePlayer = game.whitePlayerId === user.id;
-          const opponentName = isWhitePlayer ? game.blackPlayerName : game.whitePlayerName;
-          const opponentRating = 1500; // Default rating, update when available from backend
-          
-          // Determine result from player's perspective
-          let result = "draw";
-          if (game.status === "completed") {
-            if (game.result === "white_wins") {
-              result = isWhitePlayer ? "win" : "loss";
-            } else if (game.result === "black_wins") {
-              result = isWhitePlayer ? "loss" : "win";
-            }
-          }
-
-          return {
-            username: opponentName,
-            rating: opponentRating,
-            result: result,
-            accuracy: 0, // Calculate or get from backend
-            moves: game.moves?.length || 0,
-            date: new Date(game.createdAt).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            }),
-            gameId: game._id,
-          };
-        });
-        
+        const summaries = await fetchGameSummaries();
+        const transformedGames = (summaries || []).map((game: GameSummaryResponse) => ({
+          username: game.opponentName,
+          rating: game.opponentElo,
+          playerElo: game.playerElo,
+          result: game.playerResult,
+          accuracy: 0,
+          moves: game.movesCount,
+          date: new Date(game.matchDate).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+          gameId: game.gameId,
+          playerColor: game.playerColor,
+        }));
         setGames(transformedGames);
+
+        const latestRatedGame = (summaries || []).find(
+          (summary) => typeof summary.playerElo === "number"
+        );
+        if (latestRatedGame && typeof latestRatedGame.playerElo === "number") {
+          setUser({ elo: latestRatedGame.playerElo });
+        }
       } catch (err) {
-        console.error("Failed to fetch games", err);
+        console.error("Failed to fetch summaries", err);
         setGames([]);
       } finally {
         setLoading(false);
       }
     };
+
+    const fetchPerformance = async () => {
+      try {
+        setPerformanceLoading(true);
+        const res = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/performance`, {
+          headers: {
+            Authorization: `Bearer ${Cookies.get("auth-token")}`,
+          },
+        });
+        setPerformanceData(res.data);
+        console.log("Performance data:", res.data);
+      } catch (err) {
+        console.error("Failed to fetch performance stats", err);
+        setPerformanceData([]);
+      } finally {
+        setPerformanceLoading(false);
+      }
+    };
+
     fetchGames();
-  }, [user.id]);
+    fetchPerformance();
+  }, [user.id, setUser]);
 
   const handleLogout = () => {
     try {
@@ -127,11 +170,45 @@ export default function Dashboard() {
   ];
 
 
-  const gameStats = [
-    { type: "Overall", icon: Trophy, played: 249, wins: 138, winRate: 55, color: "#10b981" }, // Green
-    { type: "Bullet", icon: BulletIcon, played: 120, wins: 65, winRate: 54, color: "#ef4444" }, // Red
-    { type: "Blitz", icon: BlitzIcon, played: 87, wins: 43, winRate: 49, color: "#f59e0b" }, // Amber/Orange
-    { type: "Rapid", icon: RapidIcon, played: 42, wins: 30, winRate: 71, color: "#3b82f6" }, // Blue
+  // Map performance data to gameStats format
+  const gameStats = performanceData.length > 0 ? performanceData.map(stat => {
+    let icon, color;
+    
+    switch (stat.format) {
+      case 'Overall':
+        icon = Trophy;
+        color = "#10b981";
+        break;
+      case 'Bullet':
+        icon = BulletIcon;
+        color = "#ef4444";
+        break;
+      case 'Blitz':
+        icon = BlitzIcon;
+        color = "#f59e0b";
+        break;
+      case 'Rapid':
+        icon = RapidIcon;
+        color = "#3b82f6";
+        break;
+      default:
+        icon = Trophy;
+        color = "#10b981";
+    }
+
+    return {
+      type: stat.format,
+      icon,
+      played: stat.played,
+      wins: stat.wins,
+      winRate: Math.round(stat.winRate),
+      color
+    };
+  }) : [
+    { type: "Overall", icon: Trophy, played: 0, wins: 0, winRate: 0, color: "#10b981" },
+    { type: "Bullet", icon: BulletIcon, played: 0, wins: 0, winRate: 0, color: "#ef4444" },
+    { type: "Blitz", icon: BlitzIcon, played: 0, wins: 0, winRate: 0, color: "#f59e0b" },
+    { type: "Rapid", icon: RapidIcon, played: 0, wins: 0, winRate: 0, color: "#3b82f6" },
   ];
 
   // Weekly stats data (mock data - replace with real data later)
@@ -191,8 +268,9 @@ export default function Dashboard() {
           {/* Settings Icon */}
           <button
             onClick={handleLogout}
-            className="text-[#a0a0a0] hover:text-white transition-all duration-300 hover:rotate-45"
+            className="text-[#a0a0a0] hover:text-white transition-all duration-300 hover:rotate-45 cursor-pointer"
             aria-label="Settings"
+            title="Logout"
           >
             <Settings size={24} />
           </button>
@@ -217,7 +295,7 @@ export default function Dashboard() {
             </h2>
 
             {/* Top Row - Key Metrics */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="grid grid-cols-3 gap-4 mb-6">
               {/* ELO */}
               <div className="bg-white/5 backdrop-blur-xs rounded-lg p-4 flex flex-col items-end justify-center gap-2 h-20 relative overflow-hidden">
                 <TbTargetArrow size={90} className="text-[#a855f7] opacity-50 absolute -top-1 -left-2" />
@@ -244,59 +322,62 @@ export default function Dashboard() {
             <div>
               <h3 className="text-sm font-medium mb-4">Performance by Format</h3>
 
-              <div className="flex gap-4">
-                {gameStats.map((stat, index) => {
-                  const Icon = stat.icon;
+              {performanceLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <p className="text-gray-400">Loading performance data...</p>
+                </div>
+              ) : (
+                <div className="flex gap-4">
+                  {gameStats.map((stat, index) => {
+                    const Icon = stat.icon;
 
-                  return (
-                    <motion.div
-                      key={stat.type}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3, delay: 0.1 + index * 0.05 }}
-                      className="bg-white/5 backdrop-blur-xs flex-1 rounded-lg p-4 transition-all duration-300 relative overflow-hidden"
-                    >
-                      {/* <div className="absolute -top-2 -right-2 opacity-10 pointer-events-none">
-                        <Icon size={100} style={{ color: "#5d5a5aff"}} />
-                      </div> */}
-                      <div className="flex items-center gap-2 mb-3">
-                        <Icon size={16} style={{ color: stat.color }} />
-                        <span className="text-sm font-medium">{stat.type}</span>
-                      </div>
+                    return (
+                      <motion.div
+                        key={stat.type}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.3, delay: 0.1 + index * 0.05 }}
+                        className="bg-white/5 backdrop-blur-xs flex-1 rounded-lg p-4 transition-all duration-300 relative overflow-hidden"
+                      >
+                        <div className="flex items-center gap-2 mb-3">
+                          <Icon size={16} style={{ color: stat.color }} />
+                          <span className="text-sm font-medium">{stat.type}</span>
+                        </div>
 
-                      <div className="flex items-end justify-between mb-2">
-                        <div className="flex flex-col">
-                          <span className="text-[10px] text-[#a0a0a0]">Played</span>
-                          <span className="text-lg font-bold" style={{ color: stat.color }}>
-                            {stat.played}
-                          </span>
+                        <div className="flex items-end justify-between mb-2">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-[#a0a0a0]">Played</span>
+                            <span className="text-lg font-bold" style={{ color: stat.color }}>
+                              {stat.played}
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] text-[#a0a0a0]">Wins</span>
+                            <span className="text-sm text-[#a0a0a0]">{stat.wins}</span>
+                          </div>
                         </div>
-                        <div className="flex flex-col items-end">
-                          <span className="text-[10px] text-[#a0a0a0]">Wins</span>
-                          <span className="text-sm text-[#a0a0a0]">{stat.wins}</span>
-                        </div>
-                      </div>
 
-                      {/* Progress Bar - represents win rate */}
-                      <div className="h-1 bg-[#1a1a1a] rounded-full overflow-hidden relative group">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${stat.winRate}%` }}
-                          transition={{ duration: 1, delay: 0.3 + index * 0.1, ease: "easeOut" }}
-                          className="h-full rounded-full"
-                          style={{
-                            background: `linear-gradient(to right, ${stat.color}, ${stat.color}dd)`
-                          }}
-                        />
-                        {/* Tooltip - shows win rate on hover */}
-                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 text-white text-xs px-2 py-1 rounded whitespace-nowrap pointer-events-none">
-                          Win Rate: {stat.winRate}%
+                        {/* Progress Bar - represents win rate */}
+                        <div className="h-1 bg-[#1a1a1a] rounded-full overflow-visible relative group cursor-pointer">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${stat.winRate}%` }}
+                            transition={{ duration: 1, delay: 0.3 + index * 0.1, ease: "easeOut" }}
+                            className="h-full rounded-full"
+                            style={{
+                              background: `linear-gradient(to right, ${stat.color}, ${stat.color}dd)`
+                            }}
+                          />
+                          {/* Tooltip - shows win rate on hover */}
+                          <div className="absolute -top-9 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/90 text-white text-xs px-2 py-1 rounded whitespace-nowrap pointer-events-none z-10">
+                            Win Rate: {stat.winRate}%
+                          </div>
                         </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </motion.section>
 
@@ -353,18 +434,26 @@ export default function Dashboard() {
 
                     {/* Right Side - Game Stats */}
                     <div className="hidden md:flex items-center gap-6">
+                      <div className="flex flex-col items-center">
+                          <span className="text-[10px] text-[#a0a0a0]">You Played</span>
+                          <span className="text-sm capitalize">{game.playerColor}</span>
+                        </div>
                         <div className="flex flex-col items-center">
                           <span className="text-[10px] text-[#a0a0a0]">Result</span>
-                          <span className="text-sm">{game.result}</span>
+                          <span className="text-sm capitalize">{game.result}</span>
                         </div>
-                      <div className="flex flex-col items-center">
-                        <span className="text-[10px] text-[#a0a0a0]">Moves</span>
-                        <span className="text-sm">{game.moves}</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <span className="text-[10px] text-[#a0a0a0]">Date</span>
-                        <span className="text-sm">{game.date}</span>
-                      </div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-[10px] text-[#a0a0a0]">Opponent ELO</span>
+                          <span className="text-sm">{game.rating ?? "—"}</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-[10px] text-[#a0a0a0]">Moves</span>
+                          <span className="text-sm">{game.moves}</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-[10px] text-[#a0a0a0]">Date</span>
+                          <span className="text-sm">{game.date}</span>
+                        </div>
                     </div>
                   </motion.div>
                 ))
@@ -385,7 +474,7 @@ export default function Dashboard() {
             <h2 className="text-lg font-bold mb-5">New Game</h2>
 
             {/* Time Control Grid */}
-            <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="grid grid-cols-3 gap-4 mb-4">
               {timeControls.map((control, index) => (
                 <motion.button
                   key={index}
@@ -405,7 +494,7 @@ export default function Dashboard() {
               ))}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-4">
               {/* Custom Button */}
               <button
                 onClick={() => window.location.href = '/play'}

@@ -24,7 +24,6 @@ function PlayPageContent() {
   const [gameId, setGameId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [timeControl, setTimeControl] = useState<string>("");
-  const [waitingTime, setWaitingTime] = useState<number>(0);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [isStartingFromDashboard, setIsStartingFromDashboard] = useState(false);
   const [pendingMatchmaking, setPendingMatchmaking] = useState(false);
@@ -79,15 +78,17 @@ function PlayPageContent() {
       newSocket.once('matchmaking-found', (data) => {
         console.log('Match found!', data.gameId);
         setGameId(data.gameId);
+        setCountdown(5);
         console.log("Opponent data:", data.opponent);
-        // Ensure opponent avatar has proper URL format
         const opponentData = {
           ...data.opponent,
-          avatar: data.opponent.avatar ? getAvatarUrl(data.opponent.avatar) : getAvatarUrl(getRandomAvatar())
+          elo: data.opponent?.elo ?? null,
+          avatar: data.opponent?.avatar ? getAvatarUrl(data.opponent.avatar) : getAvatarUrl(getRandomAvatar())
         };
+        const opponentElo = typeof data.opponent?.elo === "number" ? data.opponent.elo : undefined;
         setOpponent(opponentData);
         setMatchFound(true);
-        toast.success("Match found!");
+        toast.success(`Match found vs ${opponentData.username}${opponentElo ? ` (ELO ${opponentElo})` : ""}!`);
       });
 
       newSocket.on("error", (error: { message: string }) => {
@@ -213,7 +214,6 @@ function PlayPageContent() {
     if (step === 1 && timeControl && socket?.connected) {
       console.log("Starting matchmaking with time control:", timeControl);
       startMatchmaking();
-      setWaitingTime(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, timeControl, socket?.connected]);
@@ -221,15 +221,13 @@ function PlayPageContent() {
   // Track waiting time and show timeout modal after 3 minutes
   useEffect(() => {
     if (step === 1 && !matchFound) {
+      let waitingTime = 0;
       const interval = setInterval(() => {
-        setWaitingTime((prev) => {
-          const newTime = prev + 1;
-          if (newTime >= 180) { // 3 minutes = 180 seconds
-            clearInterval(interval);
-            setShowTimeoutModal(true);
-          }
-          return newTime;
-        });
+        waitingTime += 1;
+        if (waitingTime >= 180) { // 3 minutes = 180 seconds
+          clearInterval(interval);
+          setShowTimeoutModal(true);
+        }
       }, 1000);
 
       return () => clearInterval(interval);
@@ -319,6 +317,9 @@ function PlayPageContent() {
                 className="rounded-full"
               />
               <p className="mt-2 text-xl font-semibold">{opponent?.username || "Opponent"}</p>
+              {typeof (opponent as any)?.elo === "number" && (
+                <p className="text-sm text-gray-400">ELO {(opponent as any).elo}</p>
+              )}
             </div>
 
             <span className="text-3xl font-bold">VS</span>
@@ -334,6 +335,12 @@ function PlayPageContent() {
               <p className="mt-2 text-xl font-semibold">{username}</p>
             </div>
           </div>
+
+          {timeControl && (
+            <p className="mt-4 text-lg text-gray-300">
+              Time Control: {timeControl}
+            </p>
+          )}
 
           <p className="mt-10 text-4xl font-bold animate-pulse">
             Match starts in {countdown}...
@@ -355,7 +362,6 @@ function PlayPageContent() {
                 onClick={() => {
                   setShowTimeoutModal(false);
                   setStep(0);
-                  setWaitingTime(0);
                 }}
                 className="flex-1 px-6 py-3 bg-primary text-black rounded-lg font-semibold hover:bg-primary/90 transition"
               >

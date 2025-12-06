@@ -13,6 +13,11 @@ interface GameResultModalProps {
   message: string;
   onClose: () => void;
   isGuest?: boolean;
+  ratingChange?: {
+    oldRating: number;
+    newRating: number;
+    delta: number;
+  };
 }
 
 export default function GameResultModal({
@@ -21,6 +26,7 @@ export default function GameResultModal({
   message,
   onClose,
   isGuest = false,
+  ratingChange,
 }: GameResultModalProps) {
   const router = useRouter();
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
@@ -104,6 +110,14 @@ export default function GameResultModal({
         <p className="text-center text-gray-300 mb-6">
           {message}
         </p>
+
+        {ratingChange && !isGuest && (
+          <div className="mb-6 p-4 bg-zinc-800/60 rounded-lg border border-white/10 text-center">
+            <p className="text-sm text-gray-300">
+              Rating: {ratingChange.oldRating} → {ratingChange.newRating} ({ratingChange.delta >= 0 ? "+" : ""}{ratingChange.delta})
+            </p>
+          </div>
+        )}
 
         {/* Login Prompt for Guests */}
         {showLoginPrompt && isGuest && (

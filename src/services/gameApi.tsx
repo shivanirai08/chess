@@ -116,3 +116,49 @@ export const getGameIdFromPath = () => {
   const parts = window.location.pathname.split("/").filter(Boolean);
   return parts.length ? parts[parts.length - 1] : null;
 };
+
+export interface GameSummaryResponse {
+  gameId: string;
+  opponentName: string;
+  opponentElo: number | null;
+  playerElo: number | null;
+  result: string | null;
+  movesCount: number;
+  matchDate: string;
+  playerColor: "white" | "black";
+  playerResult: "win" | "loss" | "draw";
+}
+
+// Fetch game summaries for the authenticated user
+export const fetchGameSummaries = async (): Promise<GameSummaryResponse[] | null> => {
+  const token = getToken();
+  if (!token) {
+    toast.error("Authentication required");
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_BACKEND_URL}/game/games/summary`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      toast.error("Failed to fetch game summaries");
+      return null;
+    }
+
+    const data = await response.json();
+    return data.games ?? [];
+  } catch (error) {
+    console.error("Error fetching game summaries:", error);
+    toast.error("Network error while fetching summaries");
+    return null;
+  }
+};

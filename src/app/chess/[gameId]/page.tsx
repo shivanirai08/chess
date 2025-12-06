@@ -37,6 +37,36 @@ import {
 // Utils
 import { getRandomAvatar, getAvatarUrl } from "@/utils/avatar";
 
+type GameClockState = {
+  whiteTimeRemaining: number;
+  blackTimeRemaining: number;
+  incrementSeconds: number;
+  lastMoveAt: string;
+  currentTurn: "white" | "black";
+};
+
+type RatingDelta = {
+  oldRating: number;
+  newRating: number;
+  delta: number;
+};
+
+type RatingUpdatePayload = {
+  gameId: string;
+  playerColor: "white" | "black";
+  self?: RatingDelta | null;
+  opponent?: RatingDelta | null;
+};
+
+type ClockMetaState = {
+  whiteBase: number;
+  blackBase: number;
+  currentTurn: "white" | "black";
+  increment: number;
+  lastSync: number;
+  isRunning: boolean;
+};
+
 export default function ChessPage() {
   const { setUser, user, opponent, setOpponent } = useUserStore();
   const userId = user.id; // Extract user ID once
@@ -53,18 +83,27 @@ export default function ChessPage() {
   const [currentMoveIndex, setCurrentMoveIndex] = useState(() => moves.length - 1);
   const [gameStatus, setGameStatus] = useState<string>("active");
   const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
+  const playerColorRef = useRef<"white" | "black">("white");
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
 
   // Timer states
-  const [whiteTime, setWhiteTime] = useState<number>(600); // in seconds
-  const [blackTime, setBlackTime] = useState<number>(600); // in seconds
-  const [increment, setIncrement] = useState<number>(0); // in seconds
-  const [isTimerActive, setIsTimerActive] = useState<boolean>(false);
+  const [whiteTime, setWhiteTime] = useState<number>(600);
+  const [blackTime, setBlackTime] = useState<number>(600);
+  const [clockMeta, setClockMeta] = useState<ClockMetaState>({
+    whiteBase: 600,
+    blackBase: 600,
+    currentTurn: "white",
+    increment: 0,
+    lastSync: Date.now(),
+    isRunning: true,
+  });
+  const [startingElo, setStartingElo] = useState<number | null>(user.elo ?? null);
   const [isResultModalOpen, setIsResultModalOpen] = useState(false);
   const [gameResult, setGameResult] = useState<{
     type: "win" | "loss" | "draw" | "abandoned";
     message: string;
-    } | null>(null);
+  } | null>(null);
+  const [ratingChange, setRatingChange] = useState<RatingDelta | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
 
@@ -72,7 +111,6 @@ export default function ChessPage() {
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [showDrawOffer, setShowDrawOffer] = useState(false);
   const [isDrawOffering, setIsDrawOffering] = useState(false); // true if we sent the offer
-  const [_drawOfferFrom, setDrawOfferFrom] = useState<string>(""); // who sent the draw offer
 
   // Game setup
   // Game state management
@@ -103,10 +141,11 @@ export default function ChessPage() {
   };
 
   // Helper to format time in MM:SS format
-  const formatTime = (seconds: number): string => {
+  const formatTime = (rawSeconds: number): string => {
+    const seconds = Math.max(0, Math.floor(rawSeconds));
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   // Helper to set game result
@@ -142,7 +181,7 @@ export default function ChessPage() {
     const loadGameState = async () => {
       const gameData = await fetchGameState(gameId, guestId ?? undefined);
       if (gameData && gameData.game) {
-        const { game } = gameData;
+        const { game, clock } = gameData;
 
         // Determine player color and set board orientation
         const whiteId = String(game.whitePlayerId).trim();
@@ -224,7 +263,8 @@ export default function ChessPage() {
             username: isWhite ? game.blackPlayerName : game.whitePlayerName,
             userId: isWhite ? game.blackPlayerId : game.whitePlayerId,
             isGuest: game.isGuestGame || false,
-            avatar: opponentAvatar
+            avatar: opponentAvatar,
+            elo: isWhite ? game.blackPlayerElo ?? null : game.whitePlayerElo ?? null
           };
 
           // Only set if opponent is different from current user
@@ -233,28 +273,8 @@ export default function ChessPage() {
           }
         }
 
-        // Parse and initialize timers from timeControl
-        if (game.timeControl) {
-          const timeControlParts = game.timeControl.split("|");
-          if (timeControlParts.length >= 1) {
-            // Parse time in minutes
-            const minutes = parseInt(timeControlParts[0].replace(/[^0-9]/g, ""));
-            const seconds = minutes * 60;
-            setWhiteTime(seconds);
-            setBlackTime(seconds);
-
-            // Parse increment if present
-            if (timeControlParts.length === 2) {
-              const inc = parseInt(timeControlParts[1].replace(/[^0-9]/g, ""));
-              setIncrement(inc);
-            }
-
-            // Activate timer if game is active
-            if (game.status === "active") {
-              setIsTimerActive(true);
-            }
-          }
-        }
+        // Sync clock from server
+        syncClockFromServer(clock, game.status);
 
         // Show game status if game is over
         if (game.status === "completed" && game.result) {
@@ -323,6 +343,15 @@ export default function ChessPage() {
       if (data?.status) {
         setGameStatus(data.status);
       }
+      if (data?.clock) {
+        syncClockFromServer(data.clock, data.game?.status);
+      }
+    });
+
+    newSocket.on("clock-sync", (data) => {
+      if (data?.clock) {
+        syncClockFromServer(data.clock, gameStatus);
+      }
     });
 
     newSocket.on("move-made", (data) => {
@@ -363,53 +392,99 @@ export default function ChessPage() {
         console.error("Error applying opponent move", e);
         toast.error("Failed to apply opponent's move");
       }
+
+      if (data?.gameState?.clock) {
+        syncClockFromServer(data.gameState.clock, data.gameState.game.status);
+      }
     });
 
     newSocket.on("game-over", (data) => {
       setGameStatus("completed");
+      setClockMeta((prev) => ({ ...prev, isRunning: false }));
+
+      if (data?.ratings) {
+        const currentColor = playerColorRef.current;
+        const selfRating = currentColor === "white" ? data.ratings.white : data.ratings.black;
+        const oppRating = currentColor === "white" ? data.ratings.black : data.ratings.white;
+
+        if (selfRating) {
+          setRatingChange(selfRating);
+          setUser({ elo: selfRating.newRating });
+        }
+
+        if (oppRating) {
+          setOpponent({ elo: oppRating.newRating });
+        }
+      }
 
       if (data?.result) {
-      if (data.result == "white_wins"){
-        const isWinner = data.winner === playerId;
+        const isWinner = data.winner?.userId === playerId;
+        let message = "";
+
+        if (data.reason === "TIMEOUT") {
+          message = isWinner ? "You win on time!" : "You lost on time!";
+        } else if (data.reason === "CHECKMATE") {
+          message = isWinner ? "Checkmate! You win!" : "Checkmate! You lose!";
+        } else if (data.reason === "RESIGNATION") {
+          message = isWinner ? "Opponent resigned! You win!" : "You resigned";
+        } else if (data.reason?.startsWith("DRAW")) {
+          message = "The game ended in a draw.";
+        } else {
+          message = data.result === "draw" ? "The game ended in a draw." : 
+                    (isWinner ? "You win!" : "You lose!");
+        }
+
         setGameResult({
-          type: isWinner ? "win" : "loss",
-          message: isWinner ? "Checkmate! You win!" : "Checkmate! You lose!",
+          type: data.result === "draw" ? "draw" : (isWinner ? "win" : "loss"),
+          message
         });
-      } else if (data.result == "black_wins"){
-        const isWinner = data.winner === playerId;
-        setGameResult({
-          type: isWinner ? "win" : "loss",
-          message: isWinner ? "Checkmate! You win!" : "Checkmate! You lose!",
-        });
-      } else {
-        setGameResult({ type: "draw", message: "The game ended in a draw." });
       }
-    }
+      
       setIsResultModalOpen(true);
+    });
+
+    newSocket.on("rating-updated", (data: RatingUpdatePayload) => {
+      if (!data) return;
+      const currentColor = playerColorRef.current;
+      if (data.playerColor !== currentColor) return;
+
+      if (data.self) {
+        setRatingChange(data.self);
+        setUser({ elo: data.self.newRating });
+      }
+      if (data.opponent) {
+        setOpponent({ elo: data.opponent.newRating });
+      }
     });
 
     newSocket.on("game-resigned", (data) => {
       setGameStatus("completed");
+      setClockMeta((prev) => ({ ...prev, isRunning: false }));
 
-      // Check if the data contains information about who resigned
-      if (data?.resignedPlayerId) {
-        const didIResign = data.resignedPlayerId === playerId;
-        setGameResult({
-          type: didIResign ? "loss" : "win",
-          message: didIResign ? "You resigned from the game" : "Opponent resigned! You win!",
-        });
-        if (!didIResign) {
-          toast.success("Opponent resigned! You win!");
+      if (data?.ratings) {
+        const currentColor = playerColorRef.current;
+        const selfRating = currentColor === "white" ? data.ratings.white : data.ratings.black;
+        const oppRating = currentColor === "white" ? data.ratings.black : data.ratings.white;
+
+        if (selfRating) {
+          setRatingChange(selfRating);
+          setUser({ elo: selfRating.newRating });
         }
-      } else {
-        // Fallback if backend doesn't send resignedPlayerId
-        // This assumes the resign event is only sent to the opponent
-        setGameResult({
-          type: "win",
-          message: "Opponent resigned! You win!",
-        });
+        if (oppRating) {
+          setOpponent({ elo: oppRating.newRating });
+        }
+      }
+
+      const didIResign = data?.resignedPlayerId === playerId;
+      setGameResult({
+        type: didIResign ? "loss" : "win",
+        message: didIResign ? "You resigned from the game" : "Opponent resigned! You win!",
+      });
+      
+      if (!didIResign) {
         toast.success("Opponent resigned! You win!");
       }
+      
       setIsResultModalOpen(true);
     });
 
@@ -450,16 +525,26 @@ export default function ChessPage() {
 
     newSocket.on("draw-offer", (data) => {
       setIsDrawOffering(false);
-      setDrawOfferFrom(data.from);
       setShowDrawOffer(true);
       toast.info(`${data.from} has offered a draw`);
     });
 
-    newSocket.on("draw-accept", () => {
+    newSocket.on("draw-accept", (data) => {
       setShowDrawOffer(false);
       setIsDrawOffering(false);
-      setGameResult({ type: "draw", message: "Game drawn by agreement" });
       setGameStatus("completed");
+      setClockMeta((prev) => ({ ...prev, isRunning: false }));
+
+      if (data?.ratings) {
+        const currentColor = playerColorRef.current;
+        const selfRating = currentColor === "white" ? data.ratings.white : data.ratings.black;
+        if (selfRating) {
+          setRatingChange(selfRating);
+          setUser({ elo: selfRating.newRating });
+        }
+      }
+
+      setGameResult({ type: "draw", message: "Game drawn by agreement" });
       setIsResultModalOpen(true);
     });
 
@@ -482,6 +567,7 @@ export default function ChessPage() {
       newSocket.off("connect");
       newSocket.off("connect_error");
       newSocket.off("game-state");
+      newSocket.off("clock-sync");
       newSocket.off("move-made");
       newSocket.off("game-over");
       newSocket.off("game-resigned");
@@ -520,52 +606,123 @@ export default function ChessPage() {
     setCurrentMoveIndex(moves.length - 1);
   }, [moves]);
 
-  // Timer countdown logic
+  // Stop clock when game is completed
   useEffect(() => {
-    if (!isTimerActive || gameStatus !== "active") {
-      return;
-    }
+    if (gameStatus !== "completed") return;
+    setClockMeta((prev) => (prev.isRunning ? { ...prev, isRunning: false } : prev));
+  }, [gameStatus]);
 
-    const interval = setInterval(() => {
-      const currentTurn = chessGame.turn(); // 'w' for white, 'b' for black
-
-      if (currentTurn === 'w') {
-        setWhiteTime((prevTime) => {
-          if (prevTime <= 0) {
-            // White runs out of time, black wins
-            clearInterval(interval);
-            setIsTimerActive(false);
-            setGameStatus("completed");
-            setGameResult({
-              type: playerColor === "black" ? "win" : "loss",
-              message: playerColor === "black" ? "You win! Opponent ran out of time" : "You lost! Time's up"
-            });
-            setIsResultModalOpen(true);
-            return 0;
-          }
-          return prevTime - 1;
-        });
-      } else {
-        setBlackTime((prevTime) => {
-          if (prevTime <= 0) {
-            // Black runs out of time, white wins
-            clearInterval(interval);
-            setIsTimerActive(false);
-            setGameStatus("completed");
-            setGameResult({
-              type: playerColor === "white" ? "win" : "loss",
-              message: playerColor === "white" ? "You win! Opponent ran out of time" : "You lost! Time's up"
-            });
-            setIsResultModalOpen(true);
-            return 0;
-          }
-          return prevTime - 1;
-        });
+  // Clock ticking effect with timeout detection
+  useEffect(() => {
+    const updateDisplay = () => {
+      if (!clockMeta.isRunning) {
+        setWhiteTime(clockMeta.whiteBase);
+        setBlackTime(clockMeta.blackBase);
+        return;
       }
-    }, 1000);
+      const elapsed = Math.max(0, Math.floor((Date.now() - clockMeta.lastSync) / 1000));
+      let newWhiteTime = clockMeta.whiteBase;
+      let newBlackTime = clockMeta.blackBase;
 
-    return () => clearInterval(interval);
-  }, [isTimerActive, gameStatus, chessGame, playerColor]);
+      if (clockMeta.currentTurn === "white") {
+        newWhiteTime = Math.max(0, clockMeta.whiteBase - elapsed);
+        newBlackTime = clockMeta.blackBase;
+      } else {
+        newBlackTime = Math.max(0, clockMeta.blackBase - elapsed);
+        newWhiteTime = clockMeta.whiteBase;
+      }
+
+      setWhiteTime(newWhiteTime);
+      setBlackTime(newBlackTime);
+
+      // Check for timeout
+      if (newWhiteTime === 0 && clockMeta.currentTurn === "white" && gameStatus === "active") {
+        handleTimeout("white");
+      } else if (newBlackTime === 0 && clockMeta.currentTurn === "black" && gameStatus === "active") {
+        handleTimeout("black");
+      }
+    };
+
+    updateDisplay();
+    if (!clockMeta.isRunning) return;
+    const intervalId = window.setInterval(updateDisplay, 100); // Check more frequently for timeout
+    return () => window.clearInterval(intervalId);
+  }, [clockMeta, gameStatus]);
+
+  const handleTimeout = (timedOutColor: "white" | "black") => {
+    if (gameStatus !== "active") return;
+
+    setGameStatus("completed");
+    setClockMeta((prev) => ({ ...prev, isRunning: false }));
+
+    const isWinner =
+      (timedOutColor === "white" && playerColorRef.current === "black") ||
+      (timedOutColor === "black" && playerColorRef.current === "white");
+
+    setGameResult({
+      type: isWinner ? "win" : "loss",
+      message: isWinner ? "You win on time!" : "You lost on time!",
+    });
+  };
+
+  // Helper to sync clock from server
+  const syncClockFromServer = (clock?: GameClockState, status?: string) => {
+    if (!clock) return;
+
+    const serverTime = new Date(clock.lastMoveAt).getTime();
+    const now = Date.now();
+    const networkDelay = Math.max(0, now - serverTime);
+    const compensatedDelay = Math.min(networkDelay, 2000); // Cap at 2 seconds for network delay
+
+    // Adjust for network delay
+    const adjustedWhite = status === "active" && clock.currentTurn === "white"
+      ? Math.max(0, clock.whiteTimeRemaining - Math.floor(compensatedDelay / 1000))
+      : clock.whiteTimeRemaining;
+    const adjustedBlack = status === "active" && clock.currentTurn === "black"
+      ? Math.max(0, clock.blackTimeRemaining - Math.floor(compensatedDelay / 1000))
+      : clock.blackTimeRemaining;
+
+    setClockMeta({
+      whiteBase: adjustedWhite,
+      blackBase: adjustedBlack,
+      currentTurn: clock.currentTurn,
+      increment: clock.incrementSeconds,
+      lastSync: now,
+      isRunning: status === "active",
+    });
+
+    setWhiteTime(adjustedWhite);
+    setBlackTime(adjustedBlack);
+  };
+
+  // Helper to advance local clock after making a move
+  const advanceLocalClockAfterMove = (moverColor: "white" | "black") => {
+    setClockMeta((prev) => {
+      const now = Date.now();
+      const elapsed = prev.currentTurn === moverColor 
+        ? Math.max(0, Math.floor((now - prev.lastSync) / 1000)) 
+        : 0;
+      const base = moverColor === "white" ? prev.whiteBase : prev.blackBase;
+      const remaining = Math.max(0, base - elapsed);
+      const updated = remaining + prev.increment;
+      const nextTurn = moverColor === "white" ? "black" : "white";
+      
+      const nextMeta: ClockMetaState = {
+        whiteBase: moverColor === "white" ? updated : prev.whiteBase,
+        blackBase: moverColor === "black" ? updated : prev.blackBase,
+        currentTurn: nextTurn,
+        increment: prev.increment,
+        lastSync: now,
+        isRunning: gameStatus !== "completed",
+      };
+
+      // Immediately update displayed times
+      setWhiteTime(nextMeta.whiteBase);
+      setBlackTime(nextMeta.blackBase);
+      
+      return nextMeta;
+    });
+  };
 
   // Move handling
   // Get move options
@@ -680,6 +837,7 @@ export default function ChessPage() {
           // Use WebSocket only for real-time updates
           socket.emit("make-move", { gameId, move: moveData });
         }
+        advanceLocalClockAfterMove(playerColorRef.current);
       } else {
         toast.error("Invalid move");
         const hasMoveOptions = getMoveOptions(square as Square);
@@ -769,15 +927,6 @@ export default function ChessPage() {
         setChessPosition(chessGame.fen());
         updateMovesFromHistory();
 
-        // Add time increment for the player who just moved
-        if (increment > 0) {
-          if (playerColor === "white") {
-            setWhiteTime((prev) => prev + increment);
-          } else {
-            setBlackTime((prev) => prev + increment);
-          }
-        }
-
         const gameId = getGameIdFromPath();
         if (gameId && socket) {
           socket.emit("make-move", { gameId, move: moveData });
@@ -826,6 +975,7 @@ export default function ChessPage() {
         if (gameId && socket) {
           socket.emit("make-move", { gameId, move: moveData });
         }
+        advanceLocalClockAfterMove(playerColorRef.current);
       } else {
         toast.error("Failed to make promotion move");
       }
@@ -972,6 +1122,21 @@ export default function ChessPage() {
     (playerColor === "white" && currentTurn === "w") ||
     (playerColor === "black" && currentTurn === "b");
 
+  const handleResultModalClose = () => {
+    setIsResultModalOpen(false);
+    setRatingChange(null);
+  };
+
+  useEffect(() => {
+    if (startingElo === null && typeof user.elo === "number") {
+      setStartingElo(user.elo);
+    }
+  }, [startingElo, user.elo]);
+
+  useEffect(() => {
+    playerColorRef.current = playerColor;
+  }, [playerColor]);
+
   return (
     <div className="h-full lg:h-screen w-full flex flex-col">
       {/* HEADER */}
@@ -998,12 +1163,11 @@ export default function ChessPage() {
         {/* RIGHT: SIDEBAR */}
         <div className="w-full lg:w-1/3 flex flex-col justify-between h-full px-4 lg:pb-4">
           <div className="flex flex-col gap-4">
-            {/* Player Info Section */}
             <div className="flex justify-between items-center p-1 sm:p-3 rounded-lg">
               <PlayerInfo
                 username={username || "You"}
                 avatar={user?.avatar ?? "/avatar7.svg"}
-                isCurrentPlayer={true}
+                isCurrentPlayer
                 isMyTurn={isMyTurn}
                 timeRemaining={formatTime(playerColor === "white" ? whiteTime : blackTime)}
               />
@@ -1011,43 +1175,40 @@ export default function ChessPage() {
               <PlayerInfo
                 username={opponent?.username || "Opponent"}
                 avatar={opponent?.avatar || "/avatar8.svg"}
-                isCurrentPlayer={false}
                 isMyTurn={!isMyTurn}
                 timeRemaining={formatTime(playerColor === "white" ? blackTime : whiteTime)}
               />
             </div>
-
+            <MoveHistory
+              moves={moves}
+              currentMoveIndex={currentMoveIndex}
+              onNavigate={goToMove}
+            />
           </div>
-
-          <MoveHistory
-            moves={moves}
-            currentMoveIndex={currentMoveIndex}
-            onNavigate={goToMove}
-          />
         </div>
-
-        {/* CHAT PANEL */}
-        <ChatPanel
-          isOpen={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
-          socket={socket}
-          gameId={getGameIdFromPath()}
-          opponentName={opponent?.username || "Opponent"}
-          messages={chatMessages}
-          onAddMessage={handleAddChatMessage}
-        />
       </div>
+
+      <ChatPanel
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        socket={socket}
+        gameId={getGameIdFromPath()}
+        opponentName={opponent?.username || "Opponent"}
+        messages={chatMessages}
+        onAddMessage={handleAddChatMessage}
+      />
+
       {gameResult && (
         <GameResultModal
           isOpen={isResultModalOpen}
           result={gameResult.type}
           message={gameResult.message}
-          onClose={() => setIsResultModalOpen(false)}
+          onClose={handleResultModalClose}
           isGuest={!!guestId}
+          ratingChange={guestId ? undefined : ratingChange ?? undefined}
         />
       )}
 
-      {/* Resign Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showResignConfirm}
         title="Resign Game"
@@ -1059,7 +1220,6 @@ export default function ChessPage() {
         onCancel={() => setShowResignConfirm(false)}
       />
 
-      {/* Draw Offer Dialog */}
       <DrawOfferDialog
         isOpen={showDrawOffer}
         isOffering={isDrawOffering}

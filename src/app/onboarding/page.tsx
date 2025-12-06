@@ -30,7 +30,6 @@ export default function Onboarding() {
   const [socketConnected, setSocketConnected] = useState(false);
   const [connectingSocket, setConnectingSocket] = useState(false);
   const [timeControl, setTimeControl] = useState<string>("");
-  const [waitingTime, setWaitingTime] = useState<number>(0);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const avatars = [
     "/avatar1.svg",
@@ -86,6 +85,7 @@ export default function Onboarding() {
       // Ensure opponent avatar has proper URL format
       const opponentData = {
         ...data.opponent,
+        elo: data.opponent?.elo ?? null,
         avatar: data.opponent.avatar ? getAvatarUrl(data.opponent.avatar) : getAvatarUrl(getRandomAvatar())
       };
       setOpponent(opponentData);
@@ -174,7 +174,6 @@ export default function Onboarding() {
   useEffect(() => {
     if (step === 3 && timeControl && socketConnected && !matchFound) {
       matchmaking();
-      setWaitingTime(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, timeControl, socketConnected]);
@@ -182,15 +181,13 @@ export default function Onboarding() {
   // Track waiting time and show timeout modal after 3 minutes
   useEffect(() => {
     if (step === 3 && !matchFound) {
+      let waitingTime = 0;
       const interval = setInterval(() => {
-        setWaitingTime((prev) => {
-          const newTime = prev + 1;
-          if (newTime >= 180) { // 3 minutes = 180 seconds
-            clearInterval(interval);
-            setShowTimeoutModal(true);
-          }
-          return newTime;
-        });
+        waitingTime += 1;
+        if (waitingTime >= 180) { // 3 minutes = 180 seconds
+          clearInterval(interval);
+          setShowTimeoutModal(true);
+        }
       }, 1000);
 
       return () => clearInterval(interval);
@@ -406,7 +403,6 @@ export default function Onboarding() {
                 onClick={() => {
                   setShowTimeoutModal(false);
                   setStep(2);
-                  setWaitingTime(0);
                 }}
                 className="flex-1 px-6 py-3 bg-primary text-black rounded-lg font-semibold hover:bg-primary/90 transition"
               >

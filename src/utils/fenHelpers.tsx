@@ -6,7 +6,7 @@ export function applyPremoveToFen(
   fen: string,
   from: string,
   to: string,
-  piece: PieceDropHandlerArgs["piece"]
+  _piece: PieceDropHandlerArgs["piece"]
 ): string | null {
   try {
     const [board, turn, castling, enPassant, halfMove, fullMove] =
