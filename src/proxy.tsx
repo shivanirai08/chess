@@ -5,7 +5,7 @@ const AUTH_ROUTES = ["/login", "/signup", "/newpwd", "/resetpwd", "/verifyotp"];
 const PROTECTED_ROUTES = ["/dashboard", "/play"];
 const GUEST_ALLOWED_ROUTES = ["/onboarding", "/chess"];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Get token (from cookies)
