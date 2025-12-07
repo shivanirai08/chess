@@ -27,7 +27,7 @@ function PlayPageContent() {
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [isStartingFromDashboard, setIsStartingFromDashboard] = useState(false);
   const [pendingMatchmaking, setPendingMatchmaking] = useState(false);
-  const { user: { username, avatar: userAvatar } , setOpponent, opponent } = useUserStore();
+  const { user: { username, avatar: userAvatar, elo: userElo }, setOpponent, opponent } = useUserStore();
 
 
   // Get token from cookies
@@ -246,6 +246,8 @@ function PlayPageContent() {
     }
   };
 
+  const renderElo = (elo?: number | null) => (typeof elo === "number" ? `ELO ${elo}` : "ELO —");
+
   const variants = {
     enter: (dir: "left" | "right") => ({
       x: dir === "right" ? 100 : -100,
@@ -317,9 +319,7 @@ function PlayPageContent() {
                 className="rounded-full"
               />
               <p className="mt-2 text-xl font-semibold">{opponent?.username || "Opponent"}</p>
-              {typeof (opponent as any)?.elo === "number" && (
-                <p className="text-sm text-gray-400">ELO {(opponent as any).elo}</p>
-              )}
+              <p className="text-sm text-gray-400">{renderElo((opponent?.elo ?? null) as number | null)}</p>
             </div>
 
             <span className="text-3xl font-bold">VS</span>
@@ -333,6 +333,7 @@ function PlayPageContent() {
                 className="rounded-full"
               />
               <p className="mt-2 text-xl font-semibold">{username}</p>
+              <p className="text-sm text-gray-400">{renderElo(userElo)}</p>
             </div>
           </div>
 

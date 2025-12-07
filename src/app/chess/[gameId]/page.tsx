@@ -120,8 +120,10 @@ export default function ChessPage() {
   const [initialFen, setInitialFen] = useState<string>(new Chess().fen());
   const [moveFrom, setMoveFrom] = useState("");
   const [optionSquares, setOptionSquares] = useState<Record<string, React.CSSProperties>>({});
+  const [checkSquare, setCheckSquare] = useState<string | null>(null);
   const [boardSize, setBoardSize] = useState(400);
   const [promotionMove, setPromotionMove] = useState<{ from: Square; to: Square } | null>(null);
+  const [isPremovePromotion, setIsPremovePromotion] = useState(false);
 
   // Premove management via custom hook
   const {
@@ -129,10 +131,12 @@ export default function ChessPage() {
     previewPosition,
     isAnimatingPremoveBack,
     invalidPremoveSquares,
+    pendingPromotionPremove,
     addPremove,
     executePremoves,
     clearPremoves,
     animatePremovesBack,
+    completePremovePromotion,
   } = usePremoves(chessGame);
 
   // Chat message handler
@@ -149,7 +153,13 @@ export default function ChessPage() {
   };
 
   // Helper to set game result
-  const setGameResultHelper = (result: string, whitePlayerId: string, blackPlayerId: string, whitePlayerName: string, blackPlayerName: string) => {
+  const setGameResultHelper = (
+    result: string,
+    whitePlayerId: string,
+    blackPlayerId: string,
+    whitePlayerName: string,
+    blackPlayerName: string
+  ) => {
     if (result === "white_wins") {
       const isWinner = whitePlayerId === playerId;
       setGameResult({
@@ -603,8 +613,11 @@ export default function ChessPage() {
   }, []);
 
   useEffect(() => {
-    setCurrentMoveIndex(moves.length - 1);
-  }, [moves]);
+    // When moves update, set currentMoveIndex to the live position
+    // Live position = total number of half-moves (one past the last move)
+    const fullHistory = chessGame.history();
+    setCurrentMoveIndex(fullHistory.length);
+  }, [moves, chessGame]);
 
   // Stop clock when game is completed
   useEffect(() => {
@@ -614,6 +627,22 @@ export default function ChessPage() {
 
   // Clock ticking effect with timeout detection
   useEffect(() => {
+    const handleTimeout = (timedOutColor: "white" | "black") => {
+      if (gameStatus !== "active") return;
+
+      setGameStatus("completed");
+      setClockMeta((prev) => ({ ...prev, isRunning: false }));
+
+      const isWinner =
+        (timedOutColor === "white" && playerColorRef.current === "black") ||
+        (timedOutColor === "black" && playerColorRef.current === "white");
+
+      setGameResult({
+        type: isWinner ? "win" : "loss",
+        message: isWinner ? "You win on time!" : "You lost on time!",
+      });
+    };
+
     const updateDisplay = () => {
       if (!clockMeta.isRunning) {
         setWhiteTime(clockMeta.whiteBase);
@@ -645,25 +674,9 @@ export default function ChessPage() {
 
     updateDisplay();
     if (!clockMeta.isRunning) return;
-    const intervalId = window.setInterval(updateDisplay, 100); // Check more frequently for timeout
+    const intervalId = window.setInterval(updateDisplay, 100);
     return () => window.clearInterval(intervalId);
-  }, [clockMeta, gameStatus]);
-
-  const handleTimeout = (timedOutColor: "white" | "black") => {
-    if (gameStatus !== "active") return;
-
-    setGameStatus("completed");
-    setClockMeta((prev) => ({ ...prev, isRunning: false }));
-
-    const isWinner =
-      (timedOutColor === "white" && playerColorRef.current === "black") ||
-      (timedOutColor === "black" && playerColorRef.current === "white");
-
-    setGameResult({
-      type: isWinner ? "win" : "loss",
-      message: isWinner ? "You win on time!" : "You lost on time!",
-    });
-  };
+  }, [clockMeta, gameStatus, playerColorRef]);
 
   // Helper to sync clock from server
   const syncClockFromServer = (clock?: GameClockState, status?: string) => {
@@ -759,7 +772,8 @@ export default function ChessPage() {
     }
 
     // Can't drag pieces when reviewing history
-    if (currentMoveIndex !== moves.length - 1) {
+    const fullHistory = chessGame.history();
+    if (currentMoveIndex < fullHistory.length) {
       return false;
     }
 
@@ -776,15 +790,11 @@ export default function ChessPage() {
     if (gameStatus === "completed") {
       return;
     }
-    if (currentMoveIndex !== moves.length - 1) return;
-
-    // Check if it's the player's turn
-    const currentTurn = chessGame.turn();
-    const isPlayerTurn =
-      (playerColor === "white" && currentTurn === "w") ||
-      (playerColor === "black" && currentTurn === "b");
-
-    if (!isPlayerTurn) {
+    
+    // Check if we're viewing history
+    const fullHistory = chessGame.history();
+    if (currentMoveIndex < fullHistory.length) {
+      toast.info("Return to current position to make moves");
       return;
     }
 
@@ -861,7 +871,14 @@ export default function ChessPage() {
     if (gameStatus === "completed") {
       return false;
     }
-    if (currentMoveIndex !== moves.length - 1) return false;
+    
+    // Check if we're viewing history
+    const fullHistory = chessGame.history();
+    if (currentMoveIndex < fullHistory.length) {
+      toast.info("Return to current position to make moves");
+      return false;
+    }
+
     if (!targetSquare || sourceSquare === targetSquare) return false;
 
     // Check if it's the player's turn
@@ -932,6 +949,7 @@ export default function ChessPage() {
           socket.emit("make-move", { gameId, move: moveData });
         }
 
+        advanceLocalClockAfterMove(playerColorRef.current);
         setMoveFrom("");
         setOptionSquares({});
         return true;
@@ -953,8 +971,15 @@ export default function ChessPage() {
     }
   }
 
-  // Handle promotion
+  // Handle promotion for both regular moves and premoves
   async function handlePromotion(piece: PieceSymbol) {
+    if (isPremovePromotion && pendingPromotionPremove) {
+      // Complete premove promotion
+      completePremovePromotion(piece);
+      setIsPremovePromotion(false);
+      return;
+    }
+
     if (!promotionMove) return;
     try {
       const moveData = {
@@ -970,7 +995,7 @@ export default function ChessPage() {
         setChessPosition(chessGame.fen());
         updateMovesFromHistory();
 
-        // Send promotion move to backend via both WebSocket and API
+        // Send promotion move to backend via WebSocket
         const gameId = getGameIdFromPath();
         if (gameId && socket) {
           socket.emit("make-move", { gameId, move: moveData });
@@ -985,6 +1010,13 @@ export default function ChessPage() {
     }
     setPromotionMove(null);
   }
+
+  // Watch for pending premove promotion
+  useEffect(() => {
+    if (pendingPromotionPremove) {
+      setIsPremovePromotion(true);
+    }
+  }, [pendingPromotionPremove]);
 
   function handleResign() {
     setShowResignConfirm(true);
@@ -1056,6 +1088,32 @@ export default function ChessPage() {
     toast.info("Draw offer canceled");
   }
 
+  // Helper to find king position when in check
+  const getKingSquareInCheck = (chess: Chess): string | null => {
+    if (!chess.inCheck()) return null;
+    
+    const turn = chess.turn();
+    const board = chess.board();
+    
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const piece = board[row][col];
+        if (piece && piece.type === 'k' && piece.color === turn) {
+          const file = String.fromCharCode(97 + col); // 'a' to 'h'
+          const rank = 8 - row;
+          return `${file}${rank}`;
+        }
+      }
+    }
+    return null;
+  };
+
+  // Update after opponent moves or any game state change
+  useEffect(() => {
+    const kingSquare = getKingSquareInCheck(chessGame);
+    setCheckSquare(kingSquare);
+  }, [chessPosition, chessGame]);
+
   function updateMovesFromHistory() {
     const history = chessGame.history();
     const formatted: { moveNumber: number; white?: string; black?: string }[] = [];
@@ -1069,34 +1127,48 @@ export default function ChessPage() {
     setMoves(formatted);
   }
 
-  function goToMove(index: number) {
-    const newGame = new Chess();
-    newGame.load(initialFen);
+  function goToMove(halfMoveIndex: number) {
+    clearPremoves();
+    setOptionSquares({});
+    setMoveFrom("");
 
-    for (let i = 0; i <= index; i++) {
-      const move = moves[i];
-      if (!move) break;
-      if (move.white) {
-        try {
-          newGame.move(move.white);
-        } catch (error) {
-          console.error("Error replaying white move:", error);
-          // Skip invalid move
-        }
-      }
-      if (i === index && !move.black) break;
-      if (move.black) {
-        try {
-          newGame.move(move.black);
-        } catch (error) {
-          console.error("Error replaying black move:", error);
-          // Skip invalid move
-        }
+    // Get full move history from the main game
+    const fullHistory = chessGame.history();
+
+    // Special case: if navigating to the "live position" (after all moves)
+    // This is when halfMoveIndex equals totalHalfMoves (one past the last move)
+    if (halfMoveIndex >= fullHistory.length) {
+      // Sync to the current live game state
+      setChessPosition(chessGame.fen());
+      setCurrentMoveIndex(fullHistory.length);
+      
+      // Update check indicator
+      const kingSquare = getKingSquareInCheck(chessGame);
+      setCheckSquare(kingSquare);
+      return;
+    }
+
+    // For historical positions, create a temporary chess instance
+    const tempChess = new Chess();
+    tempChess.reset();
+    tempChess.load(initialFen);
+
+    // Apply moves up to the selected half-move index
+    for (let i = 0; i <= halfMoveIndex && i < fullHistory.length; i++) {
+      try {
+        tempChess.move(fullHistory[i]);
+      } catch (error) {
+        console.error("Error replaying move:", error);
       }
     }
-    chessGameRef.current = newGame;
-    setChessPosition(newGame.fen());
-    setCurrentMoveIndex(index);
+
+    // Update the display position
+    setChessPosition(tempChess.fen());
+    setCurrentMoveIndex(halfMoveIndex);
+    
+    // Update check indicator for the navigation position
+    const kingSquare = getKingSquareInCheck(tempChess);
+    setCheckSquare(kingSquare);
   }
 
   // Board styling and configuration
@@ -1114,6 +1186,7 @@ export default function ChessPage() {
     onSquareClick,
     onSquareRightClick,
     canDragPiece,
+    checkSquare, // Add this prop
   });
 
   // Determine whose turn it is
@@ -1156,7 +1229,9 @@ export default function ChessPage() {
       >
         {/* LEFT: CHESSBOARD */}
         <div className="relative flex justify-center items-center w-full lg:w-auto h-full">
-          {promotionMove && <PromotionDialog onSelect={handlePromotion} />}
+          {(promotionMove || (isPremovePromotion && pendingPromotionPremove)) && (
+            <PromotionDialog onSelect={handlePromotion} />
+          )}
           <Chessboard options={chessboardOptions} />
         </div>
 

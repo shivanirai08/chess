@@ -129,36 +129,88 @@ export interface GameSummaryResponse {
   playerResult: "win" | "loss" | "draw";
 }
 
-// Fetch game summaries for the authenticated user
-export const fetchGameSummaries = async (): Promise<GameSummaryResponse[] | null> => {
+export interface GameSummariesResponse {
+  games: GameSummaryResponse[];
+  currentElo: number;
+  streakStats: {
+    currentStreak: number;
+    longestStreak: number;
+    type: "win" | "loss" | "draw" | null;
+  };
+}
+
+export interface WeeklyInsightsResponse {
+  eloTrend: { days: string[]; ratings: number[] };
+  breakdown: { days: string[]; wins: number[]; losses: number[]; draws: number[] };
+}
+
+export interface PerformanceStat {
+  format: string;
+  played: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  winRate: number;
+}
+
+const authHeaders = () => {
+  const token = getToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+};
+
+export const fetchGameSummaries = async (): Promise<GameSummariesResponse | null> => {
   const token = getToken();
   if (!token) {
     toast.error("Authentication required");
     return null;
   }
-
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BACKEND_URL}/game/games/summary`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/games/summary`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to fetch game summaries");
+    return await res.json();
+  } catch (err) {
+    console.error("Error fetching game summaries:", err);
+    toast.error("Failed to load game summaries");
+    return null;
+  }
+};
 
-    if (!response.ok) {
-      toast.error("Failed to fetch game summaries");
-      return null;
-    }
+export const fetchWeeklyInsights = async (): Promise<WeeklyInsightsResponse | null> => {
+  const token = getToken();
+  if (!token) {
+    toast.error("Authentication required");
+    return null;
+  }
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/insights/weekly`, { headers: authHeaders() });
+    if (!res.ok) throw new Error("Failed to fetch weekly insights");
+    return await res.json();
+  } catch (err) {
+    console.error("Error fetching weekly insights:", err);
+    toast.error("Failed to load weekly insights");
+    return null;
+  }
+};
 
-    const data = await response.json();
-    return data.games ?? [];
-  } catch (error) {
-    console.error("Error fetching game summaries:", error);
-    toast.error("Network error while fetching summaries");
+export const fetchPerformance = async (): Promise<PerformanceStat[] | null> => {
+  const token = getToken();
+  if (!token) {
+    toast.error("Authentication required");
+    return null;
+  }
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/performance`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to fetch performance data");
+    return await res.json();
+  } catch (err) {
+    console.error("Error fetching performance data:", err);
+    toast.error("Failed to load performance stats");
     return null;
   }
 };
