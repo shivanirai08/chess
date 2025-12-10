@@ -31,6 +31,8 @@ export default function Onboarding() {
   const [connectingSocket, setConnectingSocket] = useState(false);
   const [timeControl, setTimeControl] = useState<string>("");
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
+  const [isMatchmaking, setIsMatchmaking] = useState(false);
+  const [timeElapsed, setTimeElapsed] = useState(0);
   const avatars = [
     "/avatar1.svg",
     "/avatar2.svg",
@@ -70,19 +72,17 @@ export default function Onboarding() {
       setSocketId(newSocket.id ?? null);
       setSocketConnected(true);
       setConnectingSocket(false);
-      toast.success("Connected to game server");
     });
 
     newSocket.on("connect_error", (error) => {
       console.error("Socket connection error:", error);
       setSocketConnected(false);
       setConnectingSocket(false);
-      toast.error(`Connection error: ${error.message}`);
+      toast.error("Connection failed. Please try again.");
     });
 
     newSocket.on('matchmaking-found', (data) => {
       setGameId(data.gameId);
-      // Ensure opponent avatar has proper URL format
       const opponentData = {
         ...data.opponent,
         elo: data.opponent?.elo ?? null,
@@ -90,7 +90,15 @@ export default function Onboarding() {
       };
       setOpponent(opponentData);
       setMatchFound(true);
-      toast.success("Match found!");
+    });
+
+    // Add listener for matchmaking timeout
+    newSocket.on("matchmaking-timeout", (data) => {
+      console.log("Matchmaking timeout received from server:", data);
+      setIsMatchmaking(false);
+      setShowTimeoutModal(true);
+      setConnectingSocket(false);
+      // Remove local countdown timer logic
     });
 
     newSocket.on("error", (error: { message: string }) => {

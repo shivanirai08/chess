@@ -27,6 +27,7 @@ function PlayPageContent() {
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [isStartingFromDashboard, setIsStartingFromDashboard] = useState(false);
   const [pendingMatchmaking, setPendingMatchmaking] = useState(false);
+  const [isMatchmaking, setIsMatchmaking] = useState(false); // Add this state
   const { user: { username, avatar: userAvatar, elo: userElo }, setOpponent, opponent } = useUserStore();
 
 
@@ -58,10 +59,8 @@ function PlayPageContent() {
       // Connection events
       newSocket.on("connect", () => {
         console.log("Socket connected:", newSocket.id);
-        toast.success("Connected to game server");
         setSocket(newSocket);
         
-        // If there's pending matchmaking from dashboard, trigger it now
         if (pendingMatchmaking) {
           console.log("Socket connected, triggering pending matchmaking");
           setPendingMatchmaking(false);
@@ -70,15 +69,15 @@ function PlayPageContent() {
 
       newSocket.on("connect_error", (error) => {
         console.error("Socket connection error:", error);
-        toast.error(`Connection error: ${error.message}`);
+        toast.error("Connection failed. Please try again.");
         setPendingMatchmaking(false);
       });
 
-      // Game events
       newSocket.once('matchmaking-found', (data) => {
         console.log('Match found!', data.gameId);
         setGameId(data.gameId);
         setCountdown(5);
+        setIsMatchmaking(false); // Stop matchmaking state
         console.log("Opponent data:", data.opponent);
         const opponentData = {
           ...data.opponent,
@@ -88,7 +87,13 @@ function PlayPageContent() {
         const opponentElo = typeof data.opponent?.elo === "number" ? data.opponent.elo : undefined;
         setOpponent(opponentData);
         setMatchFound(true);
-        toast.success(`Match found vs ${opponentData.username}${opponentElo ? ` (ELO ${opponentElo})` : ""}!`);
+      });
+
+      // Add listener for matchmaking timeout
+      newSocket.on("matchmaking-timeout", (data) => {
+        console.log("Matchmaking timeout received from server:", data);
+        setIsMatchmaking(false);
+        setShowTimeoutModal(true);
       });
 
       newSocket.on("error", (error: { message: string }) => {
@@ -113,6 +118,7 @@ function PlayPageContent() {
         newSocket.off("connect");
         newSocket.off("connect_error");
         newSocket.off("matchmaking-found");
+        newSocket.off("matchmaking-timeout"); // Add cleanup
         newSocket.off("error");
         newSocket.off("disconnect");
         newSocket.disconnect();
@@ -150,8 +156,9 @@ function PlayPageContent() {
       return;
     }
 
+    setIsMatchmaking(true); // Set matchmaking state
+
     try {
-      // First check matchmaking status through API
       const token = getToken();
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/game/matchmaking/join`,
@@ -168,18 +175,18 @@ function PlayPageContent() {
         throw new Error(data.error);
       }
 
-      // If direct match is found, use it
       if (data.gameId) {
         setGameId(data.gameId);
         setMatchFound(true);
+        setIsMatchmaking(false);
         return;
       }
-      toast.success("Searching for opponent...");
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         console.error("Matchmaking error:", error);
-        toast.error(error.message || "Failed to start matchmaking");
+        toast.error("Failed to start matchmaking");
       }
+      setIsMatchmaking(false);
     }
   };
 
@@ -217,22 +224,6 @@ function PlayPageContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, timeControl, socket?.connected]);
-
-  // Track waiting time and show timeout modal after 3 minutes
-  useEffect(() => {
-    if (step === 1 && !matchFound) {
-      let waitingTime = 0;
-      const interval = setInterval(() => {
-        waitingTime += 1;
-        if (waitingTime >= 180) { // 3 minutes = 180 seconds
-          clearInterval(interval);
-          setShowTimeoutModal(true);
-        }
-      }, 1000);
-
-      return () => clearInterval(interval);
-    }
-  }, [step, matchFound]);
 
   const prev = () => {
     if (step > 0) {

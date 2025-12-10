@@ -499,9 +499,7 @@ export default function ChessPage() {
     });
 
     newSocket.on("players-connected", (data) => {
-      if (data?.playersConnected) {
-        toast.success("Both players connected");
-      }
+      console.log("Players connected:", data);
     });
 
     newSocket.on("error", (err) => {
@@ -561,13 +559,11 @@ export default function ChessPage() {
     newSocket.on("draw-decline", () => {
       setShowDrawOffer(false);
       setIsDrawOffering(false);
-      toast.info("Draw offer declined");
     });
 
     newSocket.on("draw-cancel", () => {
       setShowDrawOffer(false);
       setIsDrawOffering(false);
-      toast.info("Draw offer was canceled");
     });
 
     setSocket(newSocket);
@@ -791,10 +787,8 @@ export default function ChessPage() {
       return;
     }
     
-    // Check if we're viewing history
     const fullHistory = chessGame.history();
     if (currentMoveIndex < fullHistory.length) {
-      toast.info("Return to current position to make moves");
       return;
     }
 
@@ -872,10 +866,9 @@ export default function ChessPage() {
       return false;
     }
     
-    // Check if we're viewing history
     const fullHistory = chessGame.history();
     if (currentMoveIndex < fullHistory.length) {
-      toast.info("Return to current position to make moves");
+      // Remove: toast.info("Return to current position to make moves");
       return false;
     }
 

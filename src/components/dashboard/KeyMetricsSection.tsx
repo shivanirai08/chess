@@ -9,13 +9,15 @@ interface KeyMetricsSectionProps {
   gamesCount: number;
   currentStreak: number;
   longestStreak: number;
+  type: 'win'| 'loss' | 'draw' | null | undefined;
 }
 
 export function KeyMetricsSection({
   elo,
   gamesCount,
   currentStreak,
-  longestStreak
+  longestStreak,
+  type
 }: KeyMetricsSectionProps) {
   return (
     <motion.section
@@ -49,11 +51,12 @@ export function KeyMetricsSection({
         <div className="bg-white/5 backdrop-blur-xs rounded-lg p-3 sm:p-4 flex flex-col items-end justify-center gap-1 h-20 relative overflow-hidden">
           <FaFire
             size={80}
-            className="text-orange-500 opacity-30 sm:opacity-50 absolute -top-0 -left-2 -z-1"
+            className={`${ type === "win" ? "text-green-500" : type === "loss" ? "text-red-500" : "text-gray-500" }  opacity-30 sm:opacity-50 absolute -top-0 -left-2 -z-1`}
           />
           <span className="text-4xl font-bold">{currentStreak}</span>
           <span className="text-xs text-gray-200 sm:text-sm">
-            Longest: {longestStreak}
+            {/* Longest: {longestStreak} */}
+            {type ? `${type.charAt(0).toUpperCase() + type.slice(1)} Streak` : 'Streak'}
           </span>
         </div>
       </div>

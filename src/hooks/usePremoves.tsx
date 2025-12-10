@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { PieceDropHandlerArgs } from "react-chessboard";
 import { Chess, Square, PieceSymbol } from "chess.js";
-import { toast } from "sonner";
+// import { toast } from "sonner";
 import { isPseudoLegal } from "@/utils/pseudoLegal";
 import {
   applyPremoveToFen,
@@ -57,27 +57,24 @@ export function usePremoves(chessGame: Chess) {
       // 1. Piece must exist at source
       const pieceAtSource = testBoard.get(sourceSquare as Square);
       if (!pieceAtSource) {
-        toast.error("Invalid premove - no piece there");
+        // Remove: toast.error("Invalid premove - no piece there");
         return false;
       }
 
       // 2. Piece must belong to player
       const pieceColor = piece.pieceType[0];
       if (pieceAtSource.color !== pieceColor) {
-        toast.error("Invalid premove - not your piece");
         return false;
       }
 
       // 3. Target must not have own piece
       const targetPiece = testBoard.get(targetSquare as Square);
       if (targetPiece && targetPiece.color === pieceColor) {
-        toast.error("Invalid premove - can't capture own piece");
         return false;
       }
 
       // 4. PSEUDO-LEGAL CHECK
       if (!isPseudoLegal(sourceSquare, targetSquare, piece.pieceType, testBoard)) {
-        toast.error("Invalid premove - illegal piece movement");
         return false;
       }
 
@@ -172,13 +169,11 @@ export function usePremoves(chessGame: Chess) {
 
       const nextPremove = premovesRef.current[0];
 
-      // Check if piece still exists
       const pieceAtSource = chessGame.get(nextPremove.sourceSquare as Square);
       if (!pieceAtSource) {
         premovesRef.current.shift();
         setPremoves([...premovesRef.current]);
         animatePremovesBack();
-        toast.info("Premove canceled - piece was captured");
         setPreviewPosition(null);
         return;
       }
@@ -191,13 +186,11 @@ export function usePremoves(chessGame: Chess) {
       );
 
       if (foundMove) {
-        // Execute premove
         const targetSquare = nextPremove.targetSquare;
         if (!targetSquare) {
           premovesRef.current.shift();
           setPremoves([...premovesRef.current]);
           animatePremovesBack();
-          toast.info("Premove canceled - invalid target");
           setPreviewPosition(null);
           return;
         }
@@ -233,14 +226,12 @@ export function usePremoves(chessGame: Chess) {
           premovesRef.current.shift();
           setPremoves([...premovesRef.current]);
           animatePremovesBack();
-          toast.error("Premove failed");
         }
       } else {
-        // Invalid
         premovesRef.current.shift();
         setPremoves([...premovesRef.current]);
         animatePremovesBack();
-        toast.info("Premove canceled - no longer legal");
+        // toast.info("Premove canceled - no longer legal");
         setPreviewPosition(null);
       }
     },

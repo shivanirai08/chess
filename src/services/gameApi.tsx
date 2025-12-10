@@ -163,18 +163,24 @@ const authHeaders = () => {
 export const fetchGameSummaries = async (): Promise<GameSummariesResponse | null> => {
   const token = getToken();
   if (!token) {
-    toast.error("Authentication required");
+    // Silently return null instead of showing error during logout
     return null;
   }
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/games/summary`, {
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to fetch game summaries");
+    if (!res.ok) {
+      // Don't throw error on 401 (user might be logging out)
+      if (res.status === 401) {
+        return null;
+      }
+      throw new Error("Failed to fetch game summaries");
+    }
     return await res.json();
   } catch (err) {
     console.error("Error fetching game summaries:", err);
-    toast.error("Failed to load game summaries");
+    // Don't show toast error during logout
     return null;
   }
 };
@@ -182,16 +188,21 @@ export const fetchGameSummaries = async (): Promise<GameSummariesResponse | null
 export const fetchWeeklyInsights = async (): Promise<WeeklyInsightsResponse | null> => {
   const token = getToken();
   if (!token) {
-    toast.error("Authentication required");
     return null;
   }
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/insights/weekly`, { headers: authHeaders() });
-    if (!res.ok) throw new Error("Failed to fetch weekly insights");
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/insights/weekly`, { 
+      headers: authHeaders() 
+    });
+    if (!res.ok) {
+      if (res.status === 401) {
+        return null;
+      }
+      throw new Error("Failed to fetch weekly insights");
+    }
     return await res.json();
   } catch (err) {
     console.error("Error fetching weekly insights:", err);
-    toast.error("Failed to load weekly insights");
     return null;
   }
 };
@@ -199,18 +210,21 @@ export const fetchWeeklyInsights = async (): Promise<WeeklyInsightsResponse | nu
 export const fetchPerformance = async (): Promise<PerformanceStat[] | null> => {
   const token = getToken();
   if (!token) {
-    toast.error("Authentication required");
     return null;
   }
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/game/performance`, {
       headers: authHeaders(),
     });
-    if (!res.ok) throw new Error("Failed to fetch performance data");
+    if (!res.ok) {
+      if (res.status === 401) {
+        return null;
+      }
+      throw new Error("Failed to fetch performance data");
+    }
     return await res.json();
   } catch (err) {
     console.error("Error fetching performance data:", err);
-    toast.error("Failed to load performance stats");
     return null;
   }
 };

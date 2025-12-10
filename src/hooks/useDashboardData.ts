@@ -54,7 +54,18 @@ export function useDashboardData() {
   };
 
   useEffect(() => {
+    // Add abort controller to cancel requests on unmount
+    const abortController = new AbortController();
+    let isMounted = true;
+
     const loadData = async () => {
+      // Don't fetch if no user ID (logged out)
+      if (!user.id) {
+        setLoading(false);
+        setPerformanceLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setPerformanceLoading(true);
@@ -63,6 +74,11 @@ export function useDashboardData() {
           fetchWeeklyInsights(),
           fetchPerformance(),
         ]);
+
+        // Only update state if component is still mounted
+        if (!isMounted || abortController.signal.aborted) {
+          return;
+        }
 
         // Extract games, current ELO, and streak stats from summaries response
         const gamesData = summaries?.games ?? [];
@@ -88,16 +104,27 @@ export function useDashboardData() {
         // Always update user ELO with current ELO from backend
         setUser({ elo: latestElo });
       } catch (err) {
-        console.error("Failed to load dashboard data", err);
+        // Only log errors if not aborted (not logging out)
+        if (!abortController.signal.aborted) {
+          console.error("Failed to load dashboard data", err);
+        }
         setGames([]);
         setPerformanceData([]);
       } finally {
-        setLoading(false);
-        setPerformanceLoading(false);
+        if (isMounted && !abortController.signal.aborted) {
+          setLoading(false);
+          setPerformanceLoading(false);
+        }
       }
     };
     loadData();
-  }, [user.id, user.elo, setUser]);
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, [user.id, setUser]); // Remove user.elo from dependencies to prevent loops
 
   return {
     games,

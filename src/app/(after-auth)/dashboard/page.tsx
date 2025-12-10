@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Settings, Trophy, Zap, CircleEqual, X} from "lucide-react";
+import { LogOut, Trophy, Zap, CircleEqual, X} from "lucide-react";
 import { motion } from "framer-motion";
 import { useUserStore } from "@/store/useUserStore";
 import Cookies from "js-cookie";
@@ -76,11 +76,12 @@ export default function Dashboard() {
     try {
       clearUser();
       Cookies.remove("auth-token");
+      toast.success("Logged out successfully!");
+      router.push("/login");
     } catch (err) {
       console.error("Failed to clear auth data", err);
+      toast.error("Failed to logout properly");
     }
-    toast.success("Logged out successfully!");
-    setTimeout(() => router.push("/login"), 300);
   };
 
   // Map performance data to gameStats format
@@ -204,8 +205,6 @@ export default function Dashboard() {
   const daysToDisplay = isSmallScreen ? 4 : 7;
   const displayedWeekInsights = buildWeekView(weekData, weekOffset, user.elo ?? 300, daysToDisplay);
 
-  const currentWeekInsights = displayedWeekInsights;
-
   return (
     <div className="h-screen overflow-hidden flex flex-col">
       {/* TOP HEADER BAR */}
@@ -228,14 +227,14 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Settings Icon */}
+          {/* Logout Icon */}
           <button
             onClick={handleLogout}
-            className="text-[#a0a0a0] hover:text-white transition-all duration-300 hover:rotate-45 cursor-pointer"
-            aria-label="Settings"
+            className="text-[#a0a0a0] hover:text-red-400 transition-colors duration-300 cursor-pointer p-2 rounded-lg hover:bg-red-500/10"
+            aria-label="Logout"
             title="Logout"
           >
-            <Settings size={24} />
+            <LogOut size={22} />
           </button>
         </div>
       </header>
@@ -262,6 +261,7 @@ export default function Dashboard() {
                 gamesCount={games.length}
                 currentStreak={streakStats?.currentStreak ?? 0}
                 longestStreak={streakStats?.longestStreak ?? 0}
+                type={streakStats?.type}
               />
 
               {/* PERFORMANCE BY FORMAT */}
@@ -332,22 +332,31 @@ export default function Dashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.2 }}
-              className="bg-white/5 backdrop-blur-xs p-6 rounded-xl flex flex-col flex-1 min-h-0 overflow-hidden"
+              className="bg-white/5 backdrop-blur-xs p-6 rounded-xl flex flex-col flex-1 min-h-0 overflow-hidden "
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold">Completed Games</h2>
-                <div className="flex gap-2 text-xs">
-                  {(["all", "win", "loss", "draw"] as const).map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setGameFilter(f)}
-                      className={`px-3 py-1 border rounded cursor-pointer transition ${
-                        gameFilter === f ? "bg-primary/10 border border-primary " : "hover:bg-white/10 border-white/20"
-                      }`}
-                    >
-                      {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-3">
+                  {/* <div className="flex gap-2 text-xs">
+                    {(["all", "win", "loss", "draw"] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setGameFilter(f)}
+                        className={`px-3 py-1 border rounded cursor-pointer transition ${
+                          gameFilter === f ? "bg-primary/10 border border-primary " : "hover:bg-white/10 border-white/20"
+                        }`}
+                      >
+                        {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+                      </button>
+                    ))}
+                  </div> */}
+                  <button
+                    onClick={() => router.push('/history')}
+                    className="text-sm hover:bg-white/5 px-4 py-1 rounded text-white transition whitespace-nowrap cursor-pointer"
+                  >
+                    View All &gt;
+
+                  </button>
                 </div>
               </div>
 
@@ -361,7 +370,7 @@ export default function Dashboard() {
                     <p className="text-gray-400 text-sm">No games</p>
                   </div>
                 ) : (
-                  filteredGames.map((game, index) => (
+                  filteredGames.slice(0, 10).map((game, index) => (
                     <motion.div
                       key={game.gameId || index}
                       initial={{ opacity: 0, x: -20 }}
@@ -488,6 +497,7 @@ export default function Dashboard() {
               gamesCount={games.length}
               currentStreak={streakStats?.currentStreak ?? 0}
               longestStreak={streakStats?.longestStreak ?? 0}
+              type={streakStats?.type}
             />
           </motion.section>
 
@@ -570,9 +580,9 @@ export default function Dashboard() {
                 <h2 className="text-base sm:text-lg font-bold">Completed Games</h2>
                 <button
                   onClick={() => router.push('/history')}
-                  className="text-xs sm:text-sm text-primary hover:text-primary/80 transition whitespace-nowrap font-medium"
+                  className="text-xs sm:text-sm hover:bg-white/10 px-2 py-1 rounded cursor-pointer transition whitespace-nowrap font-medium"
                 >
-                  View All →
+                  View All &gt;
                 </button>
               </div>
               
@@ -582,7 +592,7 @@ export default function Dashboard() {
                     key={f}
                     onClick={() => setGameFilter(f)}
                     className={`flex-1 px-3 py-2 border rounded cursor-pointer transition text-xs sm:text-sm font-medium ${
-                      gameFilter === f ? "border-primary bg-primary/10" : "bg-white/10 hover:bg-white/20 border-white/10"
+                      gameFilter === f ? "border-primary bg-primary/10" : "bg-white/2 hover:bg-white/20 border-white/10"
                     }`}
                   >
                     {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
