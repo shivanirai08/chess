@@ -6,6 +6,7 @@ interface PlayerInfoProps {
   isCurrentPlayer?: boolean;
   isMyTurn: boolean;
   timeRemaining?: string;
+  layout?: "horizontal" | "vertical";
 }
 
 export function PlayerInfo({
@@ -14,7 +15,14 @@ export function PlayerInfo({
   isCurrentPlayer = false,
   isMyTurn,
   timeRemaining = "08:05",
+  layout = "vertical",
 }: PlayerInfoProps) {
+  // Horizontal layout for desktop
+  if (layout === "horizontal") {
+    return null; // Desktop uses inline layout in page.tsx
+  }
+
+  // Vertical layout for mobile
   return (
     <div className="flex justify-between items-center gap-2 sm:gap-4">
       <div className="flex flex-col items-center gap-2">

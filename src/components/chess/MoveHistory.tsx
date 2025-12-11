@@ -98,8 +98,8 @@ export function MoveHistory({
         </div>
       </div>
 
-      {/* Navigation Controls */}
-      <div className="flex justify-center gap-2 sticky bottom-0 py-2 bg-black">
+      {/* Navigation Controls - Only show on mobile */}
+      <div className="flex lg:hidden justify-center gap-2 sticky bottom-0 py-2 bg-black">
         <button
           className="px-3 py-2 bg-zinc-900 text-xl md:text-2xl cursor-pointer rounded-lg disabled:opacity-40 hover:bg-zinc-800 transition"
           onClick={() => onNavigate(-1)}
