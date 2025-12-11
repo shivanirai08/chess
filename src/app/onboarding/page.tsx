@@ -248,20 +248,26 @@ export default function Onboarding() {
       {/* Top bar */}
       <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
         <div className="flex items-center gap-3">
-          <span className="text-2xl font-bold">Chess</span>
+          <button onClick={() => router.push("/")} className="text-2xl font-bold hover:text-primary transition-colors">
+            Chess
+          </button>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={prev}
             disabled={step === 0}
-            className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30"
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 transition-colors"
           >
             <ArrowLeft />
           </button>
           <button
             onClick={next}
-            disabled={step === 3}
-            className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30"
+            disabled={
+              step === 3 ||
+              (step === 0 && !name.trim().length) ||
+              (step === 1 && (!name.trim().length || connectingSocket))
+            }
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 transition-colors"
           >
             <ArrowRight />
           </button>

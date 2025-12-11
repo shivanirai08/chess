@@ -633,7 +633,7 @@ export default function ChessPage() {
         setBoardSize(Math.min(height, width - 100, 600));
       } else {
         // Desktop: Account for 2 player info boxes (2 * 56px with padding) + some margin
-        const availableHeight = window.innerHeight - 112 - 80;
+        const availableHeight = window.innerHeight - 112 - 100;
         setBoardSize(Math.min(availableHeight, 600));
       }
     }
@@ -1327,10 +1327,12 @@ export default function ChessPage() {
   }
 
   return (
-    <div className="h-full lg:h-screen w-full flex flex-col lg:bg-[#0a0a0a] lg:bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] lg:bg-[size:40px_40px]">
+    <div className="h-full lg:h-screen w-full flex flex-col">
       {/* MOBILE HEADER */}
       <div className="flex lg:hidden justify-between items-center pt-2 pb-3 px-4 border-white/10">
-        <h1 className="text-2xl font-bold">Chess</h1>
+        <button onClick={() => router.push("/")} className="text-2xl font-bold hover:text-primary transition-colors">
+          Chess
+        </button>
         <GameControls
           onChatToggle={() => setIsChatOpen(!isChatOpen)}
           onDrawOffer={handleDrawOffer}
@@ -1341,12 +1343,14 @@ export default function ChessPage() {
 
       {/* DESKTOP LAYOUT */}
       <div className="hidden lg:flex h-screen w-full justify-center items-center px-6 overflow-hidden">
-        <div className="absolute top-4 left-4 text-2xl font-bold">Chess</div>
+        <button onClick={() => router.push("/")} className="absolute top-4 left-4 text-2xl font-bold hover:text-primary transition-colors">
+          Chess
+        </button>
         <div className="flex gap-8 max-w-[1400px]">
         {/* LEFT SECTION - Logo + Board */}
         <div className="flex flex-col gap-0 items-center justify-center h-full">
           {/* Top Player Info - Opponent */}
-          <div className="w-[540px] flex items-center justify-between bg-zinc-900/50 rounded-lg p-2 backdrop-blur-sm">
+          <div className="w-[540px] flex items-center justify-between bg-white/5 rounded-lg p-2 backdrop-blur-xs">
             <div className="flex items-center gap-2.5">
               <div className="w-11 h-11 rounded-full bg-zinc-700 flex items-center justify-center overflow-hidden">
                 <img
@@ -1380,7 +1384,7 @@ export default function ChessPage() {
           </div>
 
           {/* Bottom Player Info - You */}
-          <div className="w-[540px] flex items-center justify-between bg-zinc-900/50 rounded-lg p-2 backdrop-blur-sm">
+          <div className="w-[540px] flex items-center justify-between bg-white/5 -pt-2 rounded-lg p-2 backdrop-blur-xs">
             <div className="flex items-center gap-2.5">
               <div className="w-11 h-11 rounded-full flex items-center justify-center overflow-hidden">
                 <img
@@ -1408,7 +1412,7 @@ export default function ChessPage() {
         <div className="flex flex-col gap-4 overflow-hidden" style={{ width: "500px" }}>
           {/* Top Controls Row */}
           <div className="flex items-center gap-24">
-            <span className="text-base text-gray-400">
+            <span className="text-lg text-gray-200">
               {timeControlDisplay}
             </span>
             <div className="flex flex-1 gap-2 ">
@@ -1433,7 +1437,7 @@ export default function ChessPage() {
           {/* Navigation Controls */}
           <div className="flex gap-2 flex-shrink-0">
             <button
-              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
+              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
               onClick={() => goToMove(-1)}
               disabled={currentMoveIndex <= -1 || moves.length === 0}
               aria-label="Go to start"
@@ -1441,7 +1445,7 @@ export default function ChessPage() {
               ⏮
             </button>
             <button
-              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
+              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700  cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
               onClick={() => goToMove(currentMoveIndex - 1)}
               disabled={currentMoveIndex <= -1 || moves.length === 0}
               aria-label="Previous move"
@@ -1449,7 +1453,7 @@ export default function ChessPage() {
               ◀
             </button>
             <button
-              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
+              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
               onClick={() => goToMove(currentMoveIndex + 1)}
               disabled={currentMoveIndex >= moves.reduce((total, move) => total + (move.white ? 1 : 0) + (move.black ? 1 : 0), 0) || moves.length === 0}
               aria-label="Next move"
@@ -1457,7 +1461,7 @@ export default function ChessPage() {
               ▶
             </button>
             <button
-              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
+              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
               onClick={() => goToMove(moves.reduce((total, move) => total + (move.white ? 1 : 0) + (move.black ? 1 : 0), 0))}
               disabled={currentMoveIndex >= moves.reduce((total, move) => total + (move.white ? 1 : 0) + (move.black ? 1 : 0), 0) || moves.length === 0}
               aria-label="Go to end"
@@ -1467,8 +1471,8 @@ export default function ChessPage() {
           </div>
 
           {/* Move History Table */}
-          <div className="bg-zinc-900/50 rounded-lg backdrop-blur-sm overflow-hidden flex-shrink-0">
-            <div className="bg-zinc-800/50 px-4 py-3">
+          <div className="bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden flex-shrink-0 border border-white/10">
+            <div className="bg-white/4 px-4 py-3">
               <div className="grid grid-cols-3 gap-4 text-base font-semibold">
                 <div>White</div>
                 <div className="text-center">Move</div>
@@ -1520,10 +1524,9 @@ export default function ChessPage() {
           </div>
 
           {/* Chat Panel for Desktop */}
-          <div className="flex-1 bg-zinc-900/50 rounded-lg backdrop-blur-sm flex flex-col overflow-hidden min-h-0">
-            <div className="bg-zinc-800/50 px-4 py-3 flex items-center justify-between flex-shrink-0">
+          <div className="flex-1 bg-white/2 rounded-lg backdrop-blur-xs flex flex-col overflow-hidden min-h-0 border border-white/10">
+            <div className="bg-white/4 px-4 py-3 flex items-center justify-between flex-shrink-0">
               <h3 className="font-semibold text-base">Chat</h3>
-              <button className="text-gray-400 hover:text-white">⋮</button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
               {chatMessages.length === 0 ? (

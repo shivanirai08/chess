@@ -3,12 +3,11 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { LogOut, Trophy, Zap, CircleEqual, X} from "lucide-react";
+import { LogOut, Trophy, CircleEqual, X} from "lucide-react";
 import { motion } from "framer-motion";
 import { useUserStore } from "@/store/useUserStore";
 import Cookies from "js-cookie";
 import { useEffect, useState } from "react";
-import ComputerGameSetup, { GameConfig } from "@/components/layout/ComputerGameSetup";
 
 // Import custom icons
 import { BulletIcon, BlitzIcon, RapidIcon } from "@/components/icons/TimeControlIcons";
@@ -24,18 +23,6 @@ import { GameBreakdownChart } from "@/components/dashboard/GameBreakdownChart";
 // Import hooks
 import { useDashboardData } from "@/hooks/useDashboardData";
 
-interface TransformedGame {
-  username: string;
-  rating: number | null;
-  playerElo: number | null;
-  result: string;
-  accuracy: number;
-  moves: number;
-  date: string;
-  gameId: string;
-  playerColor: "white" | "black";
-}
-
 // New types for weekly insights and streaks
 interface WeeklyInsightsResponse {
   eloTrend: { days: string[]; ratings: number[] };
@@ -50,7 +37,6 @@ export default function Dashboard() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [activeInsightsTab, setActiveInsightsTab] = useState<"elo" | "games">("elo");
   const [isSmallScreen, setIsSmallScreen] = useState(false);
-  const [showComputerSetup, setShowComputerSetup] = useState(false);
 
   // Use custom hook for data fetching
   const { games, loading, performanceData, performanceLoading, weekData, streakStats } = useDashboardData();
@@ -136,11 +122,6 @@ export default function Dashboard() {
     router.push(`/play?timeControl=${encodeURIComponent(timeControl)}&autoStart=true`);
   };
 
-  const handleStartComputerGame = (config: GameConfig) => {
-    // Store config in session storage for computer game page
-    sessionStorage.setItem("computerGameConfig", JSON.stringify(config));
-    router.push("/chess/computer");
-  };
 
   const handleWeekNav = (direction: "prev" | "next" | "current") => {
     if (direction === "current") {
@@ -462,10 +443,9 @@ export default function Dashboard() {
                 </button>
 
                 <button
-                  onClick={() => setShowComputerSetup(true)}
+                  onClick={() => router.push("/computer")}
                   className="flex-1 h-12 hover:bg-secondary border border-gray-500 hover:border-none font-medium hover:font-semibold rounded-lg transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Zap size={20} />
                   <span className="text-sm">Vs Computer</span>
                 </button>
               </div>
@@ -529,10 +509,9 @@ export default function Dashboard() {
               </button>
 
               <button
-                onClick={() => setShowComputerSetup(true)}
+                onClick={() => router.push("/computer")}
                 className="flex-1 h-12 hover:bg-secondary border border-gray-500 hover:border-none font-medium hover:font-semibold rounded-lg transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Zap size={18} />
                 <span className="text-sm">Vs Computer</span>
               </button>
             </div>
@@ -629,14 +608,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-
-      {/* Computer Game Setup Modal */}
-      {showComputerSetup && (
-        <ComputerGameSetup
-          onStart={handleStartComputerGame}
-          onCancel={() => setShowComputerSetup(false)}
-        />
-      )}
     </div>
   );
 }
