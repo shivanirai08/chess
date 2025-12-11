@@ -68,7 +68,9 @@ export default function MatchmakingStep({ onMatchFound }: { onMatchFound: () => 
         <span className="mx-2">or</span>
         <hr className="w-24 border-t border-white/20" />
       </div>
-      <Button variant="secondary" className="w-full md:w-md" onClick={()=>{handleMatchFound()}} disabled={!isSearching}>Challenge a Friend</Button>
+      <Button variant="secondary" className="w-full md:w-md" onClick={()=>{handleMatchFound()}} disabled={!isSearching}>
+        Challenge a Friend
+      </Button>
     </div>
   );
 }

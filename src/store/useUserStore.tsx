@@ -17,14 +17,15 @@ type Opponent = {
   username: string;
   avatar?: string;
   isGuest: boolean;
+  elo?: number | null | undefined;
 };
 
 type UserStore = {
   user: User;
   opponent: Opponent | null;
   isLoading: boolean;
-  setUser: (user: User) => void;
-  setOpponent: (opponent: Opponent) => void;
+  setUser: (user: Partial<User>) => void;
+  setOpponent: (opponent: Partial<Opponent>) => void;
   clearOpponent: () => void;
   clearUser: () => void;
 };
@@ -34,12 +35,35 @@ export const useUserStore = create<UserStore>()(
   persist(
     (set) => ({
       user: { username: "You", avatar: "/avatar7.svg" },
-      opponent: { username : "Opponent", avatar: "/avatar8.svg", userId: "", isGuest: true },
+      opponent: { username : "Opponent", avatar: "/avatar8.svg", userId: "", isGuest: true, elo: null },
       isLoading: true,
 
-      setUser: (user) => set({ user, isLoading: false }),
-      setOpponent: (opponent) => set({ opponent }),
-      clearOpponent: () => set({ opponent: { username : "Opponent", avatar: "/avatar8.svg", userId: "", isGuest: true } }),
+      setUser: (user) =>
+        set((state) => ({
+          user: { ...state.user, ...user },
+          isLoading: false,
+        })),
+      setOpponent: (opponent) =>
+        set((state) => {
+          const mergedOpponent: Opponent = {
+            userId: opponent.userId ?? state.opponent?.userId ?? "",
+            username: opponent.username ?? state.opponent?.username ?? "Opponent",
+            avatar: opponent.avatar ?? state.opponent?.avatar ?? "/avatar8.svg",
+            isGuest: opponent.isGuest ?? state.opponent?.isGuest ?? true,
+            elo: opponent.elo ?? state.opponent?.elo ?? null,
+          };
+          return { opponent: mergedOpponent };
+        }),
+      clearOpponent: () =>
+        set({
+          opponent: {
+            username: "Opponent",
+            avatar: "/avatar8.svg",
+            userId: "",
+            isGuest: true,
+            elo: null,
+          },
+        }),
       clearUser: () => {
         localStorage.removeItem("user");
         localStorage.removeItem("user-store");

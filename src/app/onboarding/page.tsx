@@ -29,6 +29,10 @@ export default function Onboarding() {
   const [direction, setDirection] = useState<"left" | "right">("right");
   const [socketConnected, setSocketConnected] = useState(false);
   const [connectingSocket, setConnectingSocket] = useState(false);
+  const [timeControl, setTimeControl] = useState<string>("");
+  const [showTimeoutModal, setShowTimeoutModal] = useState(false);
+  const [isMatchmaking, setIsMatchmaking] = useState(false);
+  const [timeElapsed, setTimeElapsed] = useState(0);
   const avatars = [
     "/avatar1.svg",
     "/avatar2.svg",
@@ -68,26 +72,33 @@ export default function Onboarding() {
       setSocketId(newSocket.id ?? null);
       setSocketConnected(true);
       setConnectingSocket(false);
-      toast.success("Connected to game server");
     });
 
     newSocket.on("connect_error", (error) => {
       console.error("Socket connection error:", error);
       setSocketConnected(false);
       setConnectingSocket(false);
-      toast.error(`Connection error: ${error.message}`);
+      toast.error("Connection failed. Please try again.");
     });
 
     newSocket.on('matchmaking-found', (data) => {
       setGameId(data.gameId);
-      // Ensure opponent avatar has proper URL format
       const opponentData = {
         ...data.opponent,
+        elo: data.opponent?.elo ?? null,
         avatar: data.opponent.avatar ? getAvatarUrl(data.opponent.avatar) : getAvatarUrl(getRandomAvatar())
       };
       setOpponent(opponentData);
       setMatchFound(true);
-      toast.success("Match found!");
+    });
+
+    // Add listener for matchmaking timeout
+    newSocket.on("matchmaking-timeout", (data) => {
+      console.log("Matchmaking timeout received from server:", data);
+      setIsMatchmaking(false);
+      setShowTimeoutModal(true);
+      setConnectingSocket(false);
+      // Remove local countdown timer logic
     });
 
     newSocket.on("error", (error: { message: string }) => {
@@ -139,6 +150,11 @@ export default function Onboarding() {
       return;
     }
 
+    if (!timeControl) {
+      toast.error("Time control not selected. Please go back and select a time control.");
+      return;
+    }
+
     try {
       // Extract just the filename (e.g., "avatar1.svg" from "/avatar1.svg")
       const avatarFilename = avatar.startsWith('/') ? avatar.substring(1) : avatar;
@@ -148,6 +164,7 @@ export default function Onboarding() {
         socketId: socketId,
         guestName: name,
         avatar: avatarFilename,
+        timeControl,
       });
 
       setStep(3);
@@ -160,6 +177,30 @@ export default function Onboarding() {
       }
     }
   };
+
+  // Start matchmaking when step changes to 3 and timeControl is set
+  useEffect(() => {
+    if (step === 3 && timeControl && socketConnected && !matchFound) {
+      matchmaking();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, timeControl, socketConnected]);
+
+  // Track waiting time and show timeout modal after 3 minutes
+  useEffect(() => {
+    if (step === 3 && !matchFound) {
+      let waitingTime = 0;
+      const interval = setInterval(() => {
+        waitingTime += 1;
+        if (waitingTime >= 180) { // 3 minutes = 180 seconds
+          clearInterval(interval);
+          setShowTimeoutModal(true);
+        }
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [step, matchFound]);
 
   useEffect(() => {
     if (matchFound && countdown > 0) {
@@ -305,7 +346,10 @@ export default function Onboarding() {
               </div>
             )}
             {step === 2 && (
-              <GameSetup next={matchmaking}  />
+              <GameSetup next={(selectedTimeControl: string) => {
+                setTimeControl(selectedTimeControl);
+                setStep(3);
+              }}  />
             )}
 
             {step === 3 && (
@@ -350,6 +394,39 @@ export default function Onboarding() {
           <p className="mt-10 text-4xl font-bold animate-pulse">
             Match starts in {countdown}...
           </p>
+        </div>
+      )}
+
+      {/* Timeout modal */}
+      {showTimeoutModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-xl p-8 max-w-md text-center">
+            <h2 className="text-2xl font-bold mb-4">No Opponent Found</h2>
+            <p className="text-gray-400 mb-6">
+              We couldn&apos;t find an opponent with the selected time control ({timeControl}).
+              Try selecting a different time control for better matchmaking.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  setShowTimeoutModal(false);
+                  setStep(2);
+                }}
+                className="flex-1 px-6 py-3 bg-primary text-black rounded-lg font-semibold hover:bg-primary/90 transition"
+              >
+                Choose Different Time
+              </button>
+              <button
+                onClick={() => {
+                  setShowTimeoutModal(false);
+                  router.push("/");
+                }}
+                className="flex-1 px-6 py-3 bg-zinc-800 rounded-lg font-semibold hover:bg-zinc-700 transition"
+              >
+                Back to Home
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

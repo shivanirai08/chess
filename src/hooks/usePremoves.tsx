@@ -1,36 +1,46 @@
 import { useState, useRef, useCallback } from "react";
 import { PieceDropHandlerArgs } from "react-chessboard";
-import { Chess, Square } from "chess.js";
-import { toast } from "sonner";
+import { Chess, Square, PieceSymbol } from "chess.js";
+// import { toast } from "sonner";
 import { isPseudoLegal } from "@/utils/pseudoLegal";
 import {
   applyPremoveToFen,
   recalculatePreviewPosition,
 } from "@/utils/fenHelpers";
 
+interface PremoveWithPromotion extends PieceDropHandlerArgs {
+  promotion?: PieceSymbol;
+  needsPromotion?: boolean;
+}
+
 export function usePremoves(chessGame: Chess) {
-  const [premoves, setPremoves] = useState<PieceDropHandlerArgs[]>([]);
-  const premovesRef = useRef<PieceDropHandlerArgs[]>([]);
+  const [premoves, setPremoves] = useState<PremoveWithPromotion[]>([]);
+  const premovesRef = useRef<PremoveWithPromotion[]>([]);
   const [previewPosition, setPreviewPosition] = useState<string | null>(null);
   const [isAnimatingPremoveBack, setIsAnimatingPremoveBack] = useState(false);
   const [invalidPremoveSquares, setInvalidPremoveSquares] = useState<string[]>(
     []
   );
+  const [pendingPromotionPremove, setPendingPromotionPremove] = useState<{
+    sourceSquare: string;
+    targetSquare: string;
+    piece: PieceDropHandlerArgs["piece"];
+    playerColor: "white" | "black";
+  } | null>(null);
 
   const animatePremovesBack = useCallback(() => {
-    const invalidSquares = premovesRef.current
-      .flatMap((p) => [p.sourceSquare, p.targetSquare])
-      .filter((square): square is string => square !== null);
-    setInvalidPremoveSquares(invalidSquares);
-
+    const squares = premovesRef.current.flatMap((p) =>
+      [p.sourceSquare, p.targetSquare].filter(Boolean) as string[]
+    );
+    setInvalidPremoveSquares(squares);
     setIsAnimatingPremoveBack(true);
-    setPreviewPosition(null);
 
     setTimeout(() => {
       premovesRef.current = [];
       setPremoves([]);
-      setInvalidPremoveSquares([]);
+      setPreviewPosition(null);
       setIsAnimatingPremoveBack(false);
+      setInvalidPremoveSquares([]);
     }, 500);
   }, []);
 
@@ -47,28 +57,41 @@ export function usePremoves(chessGame: Chess) {
       // 1. Piece must exist at source
       const pieceAtSource = testBoard.get(sourceSquare as Square);
       if (!pieceAtSource) {
-        toast.error("Invalid premove - no piece there");
+        // Remove: toast.error("Invalid premove - no piece there");
         return false;
       }
 
       // 2. Piece must belong to player
       const pieceColor = piece.pieceType[0];
       if (pieceAtSource.color !== pieceColor) {
-        toast.error("Invalid premove - not your piece");
         return false;
       }
 
       // 3. Target must not have own piece
       const targetPiece = testBoard.get(targetSquare as Square);
       if (targetPiece && targetPiece.color === pieceColor) {
-        toast.error("Invalid premove - can't capture own piece");
         return false;
       }
 
       // 4. PSEUDO-LEGAL CHECK
       if (!isPseudoLegal(sourceSquare, targetSquare, piece.pieceType, testBoard)) {
-        toast.error("Invalid premove - illegal piece movement");
         return false;
+      }
+
+      // 5. Check if it's a promotion move
+      const isPawn = piece.pieceType.toLowerCase().includes('p');
+      const targetRank = targetSquare[1];
+      const isPromotionMove = isPawn && (targetRank === '1' || targetRank === '8');
+
+      if (isPromotionMove) {
+        // Store pending promotion premove for user to choose piece
+        setPendingPromotionPremove({
+          sourceSquare,
+          targetSquare,
+          piece,
+          playerColor
+        });
+        return true; // Return true to indicate valid premove shape
       }
 
       // Apply visually
@@ -81,7 +104,13 @@ export function usePremoves(chessGame: Chess) {
       if (!newFen) return false;
 
       // Add to queue
-      premovesRef.current.push({ sourceSquare, targetSquare, piece });
+      const premoveData: PremoveWithPromotion = { 
+        sourceSquare, 
+        targetSquare, 
+        piece,
+        needsPromotion: false
+      };
+      premovesRef.current.push(premoveData);
       setPremoves([...premovesRef.current]);
       setPreviewPosition(newFen);
 
@@ -90,8 +119,48 @@ export function usePremoves(chessGame: Chess) {
     [previewPosition, chessGame]
   );
 
+  const completePremovePromotion = useCallback(
+    (promotionPiece: PieceSymbol) => {
+      if (!pendingPromotionPremove) return;
+
+      const { sourceSquare, targetSquare, piece } = pendingPromotionPremove;
+      const currentFen = previewPosition || chessGame.fen();
+
+      // Apply visually with promotion - THIS NOW SHOWS THE SELECTED PIECE
+      const newFen = applyPremoveToFen(
+        currentFen,
+        sourceSquare,
+        targetSquare,
+        piece,
+        promotionPiece // Pass the selected piece to show it visually
+      );
+      if (!newFen) {
+        setPendingPromotionPremove(null);
+        return;
+      }
+
+      // Add to queue with promotion choice
+      const premoveData: PremoveWithPromotion = { 
+        sourceSquare, 
+        targetSquare, 
+        piece,
+        promotion: promotionPiece,
+        needsPromotion: true
+      };
+      premovesRef.current.push(premoveData);
+      setPremoves([...premovesRef.current]);
+      setPreviewPosition(newFen);
+      setPendingPromotionPremove(null);
+    },
+    [pendingPromotionPremove, previewPosition, chessGame]
+  );
+
+  const cancelPremovePromotion = useCallback(() => {
+    setPendingPromotionPremove(null);
+  }, []);
+
   const executePremoves = useCallback(
-    (onMoveExecuted: (moveData: { from: Square; to: Square; promotion?: "q" }) => void) => {
+    (onMoveExecuted: (moveData: { from: Square; to: Square; promotion?: PieceSymbol }) => void) => {
       if (premovesRef.current.length === 0) {
         setPreviewPosition(null);
         setPremoves([]);
@@ -100,13 +169,11 @@ export function usePremoves(chessGame: Chess) {
 
       const nextPremove = premovesRef.current[0];
 
-      // Check if piece still exists
       const pieceAtSource = chessGame.get(nextPremove.sourceSquare as Square);
       if (!pieceAtSource) {
         premovesRef.current.shift();
         setPremoves([...premovesRef.current]);
         animatePremovesBack();
-        toast.info("Premove canceled - piece was captured");
         setPreviewPosition(null);
         return;
       }
@@ -119,28 +186,23 @@ export function usePremoves(chessGame: Chess) {
       );
 
       if (foundMove) {
-        // Execute premove
         const targetSquare = nextPremove.targetSquare;
         if (!targetSquare) {
           premovesRef.current.shift();
           setPremoves([...premovesRef.current]);
           animatePremovesBack();
-          toast.info("Premove canceled - invalid target");
           setPreviewPosition(null);
           return;
         }
 
-        const isPawn = nextPremove.piece.pieceType.toLowerCase().includes("p");
-        const targetRank = targetSquare[1];
-        const isPromotion = isPawn && (targetRank === "8" || targetRank === "1");
-
-        const moveData: { from: Square; to: Square; promotion?: "q" } = {
+        const moveData: { from: Square; to: Square; promotion?: PieceSymbol } = {
           from: nextPremove.sourceSquare as Square,
           to: targetSquare as Square,
         };
 
-        if (isPromotion) {
-          moveData.promotion = "q";
+        // Use the user's promotion choice if available
+        if (nextPremove.needsPromotion && nextPremove.promotion) {
+          moveData.promotion = nextPremove.promotion;
         }
 
         const premoveResult = chessGame.move(moveData);
@@ -164,14 +226,12 @@ export function usePremoves(chessGame: Chess) {
           premovesRef.current.shift();
           setPremoves([...premovesRef.current]);
           animatePremovesBack();
-          toast.error("Premove failed");
         }
       } else {
-        // Invalid
         premovesRef.current.shift();
         setPremoves([...premovesRef.current]);
         animatePremovesBack();
-        toast.info("Premove canceled - no longer legal");
+        // toast.info("Premove canceled - no longer legal");
         setPreviewPosition(null);
       }
     },
@@ -182,6 +242,7 @@ export function usePremoves(chessGame: Chess) {
     premovesRef.current = [];
     setPremoves([]);
     setPreviewPosition(null);
+    setPendingPromotionPremove(null);
   }, []);
 
   return {
@@ -189,9 +250,12 @@ export function usePremoves(chessGame: Chess) {
     previewPosition,
     isAnimatingPremoveBack,
     invalidPremoveSquares,
+    pendingPromotionPremove,
     addPremove,
     executePremoves,
     clearPremoves,
     animatePremovesBack,
+    completePremovePromotion,
+    cancelPremovePromotion,
   };
 }

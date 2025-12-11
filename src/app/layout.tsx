@@ -36,9 +36,12 @@ export default function RootLayout({
             className="relative min-h-screen bg-fixed bg-cover bg-center bg-no-repeat"
             style={{ backgroundImage: "url('/bg.svg')" }}
           >
-            {/* Overlay */}
-            <div className="fixed inset-0 bg-gradient-to-b from-black/30 to-black/60 pointer-events-none" />
-            {children}
+            {/* Overlay - sits between background and content */}
+            <div className="fixed inset-0 bg-gradient-to-b from-black/30 to-black/60 pointer-events-none z-0" />
+            {/* Content - sits above overlay */}
+            <div className="relative z-10">
+              {children}
+            </div>
           </div>
       </body>
     </html>

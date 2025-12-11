@@ -19,6 +19,7 @@ interface UseBoardStylingParams {
   onSquareClick: (args: SquareHandlerArgs) => void;
   onSquareRightClick: (args: SquareHandlerArgs) => void;
   canDragPiece: (args: PieceHandlerArgs) => boolean;
+  checkSquare?: string | null; // Add this
 }
 
 //Custom hook for managing chessboard styling and configuration
@@ -37,6 +38,7 @@ export function useBoardStyling(params: UseBoardStylingParams) {
     onSquareClick,
     onSquareRightClick,
     canDragPiece,
+    checkSquare, // Add this
   } = params;
 
   const chessboardOptions = useMemo(() => {
@@ -84,6 +86,15 @@ export function useBoardStyling(params: UseBoardStylingParams) {
       ]
     );
 
+    // Add check square highlighting (red glow)
+    if (checkSquare) {
+      combinedSquareStyles[checkSquare] = {
+        background:
+          "radial-gradient(circle, rgba(255, 0, 0, 0.5) 40%, rgba(255, 0, 0, 0.3) 70%, transparent 100%)",
+        boxShadow: "inset 0 0 20px rgba(255, 0, 0, 0.6)",
+      };
+    }
+
     return {
       position: previewPosition || chessPosition, // Use preview if premoves exist
       onPieceDrop,
@@ -120,6 +131,7 @@ export function useBoardStyling(params: UseBoardStylingParams) {
     onSquareClick,
     onSquareRightClick,
     canDragPiece,
+    checkSquare,
   ]);
 
   return { chessboardOptions };

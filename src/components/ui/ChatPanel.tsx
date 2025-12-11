@@ -121,10 +121,10 @@ export default function ChatPanel({
                 }`}
               >
                 <div
-                  className={`max-w-[75%] rounded-lg p-3 ${
+                  className={`max-w-[75%] rounded-xl p-3 ${
                     msg.sender === "me"
-                      ? "bg-[#B27DB8] text-black"
-                      : "bg-[#7AB1AF] text-black"
+                      ? "bg-zinc-700 text-white rounded-tr-none"
+                      : "bg-slate-700 text-white rounded-bl-none"
                   }`}
                 >
                   <p className="text-sm break-words">{msg.message}</p>

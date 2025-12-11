@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import Button from "@/components/ui/Button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import ConfettiBoom from "react-confetti-boom";
 
 type GameResult = "win" | "loss" | "draw" | "abandoned";
 
@@ -13,6 +14,11 @@ interface GameResultModalProps {
   message: string;
   onClose: () => void;
   isGuest?: boolean;
+  ratingChange?: {
+    oldRating: number;
+    newRating: number;
+    delta: number;
+  };
 }
 
 export default function GameResultModal({
@@ -21,9 +27,20 @@ export default function GameResultModal({
   message,
   onClose,
   isGuest = false,
+  ratingChange,
 }: GameResultModalProps) {
   const router = useRouter();
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // Trigger confetti when modal opens with victory
+  useEffect(() => {
+    if (isOpen && result === "win") {
+      setShowConfetti(true);
+    } else {
+      setShowConfetti(false);
+    }
+  }, [isOpen, result]);
 
   const getResultColor = () => {
     switch (result) {
@@ -84,72 +101,106 @@ export default function GameResultModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900/95 rounded-lg p-6 max-w-md w-full border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.6)] relative">
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-white/50 hover:text-white transition"
-          aria-label="Close"
-        >
-          <X className="w-5 h-5" />
-        </button>
+    <>
+      {/* Backdrop - lowest layer (z-50) */}
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        {/* Confetti Effect for Victory - middle layer (z-[51]) */}
+        {showConfetti && result === "win" && (
+          <div className="fixed inset-0  z-[51] pointer-events-none">
+            <ConfettiBoom
+              y={0.32}
+              particleCount={200}
+              effectCount={1}
+              effectInterval={600}
+              colors={[
+                "#D2FE4E",
+                "#FFA500",
+                "#b92410ff",
+                "#f5f236ff",
+                "#8D3AE2",
+                "#36f50bff", 
+              ]}
+              shapeSize={14}
+              spreadDeg={360}
+            />
+          </div>
+        )}
 
-        {/* Title */}
-        <h2 className={`text-3xl font-bold text-center mb-3 pr-8 ${getResultColor()}`}>
-          {getTitle()}
-        </h2>
+        {/* Modal - top layer (z-[52]) */}
+        <div className="bg-zinc-900/95 rounded-lg p-6 max-w-md w-full border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.6)] relative z-[52]">
+          {/* Close Button */}
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-white/50 hover:text-white transition"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
 
-        {/* Message */}
-        <p className="text-center text-gray-300 mb-6">
-          {message}
-        </p>
+          {/* Title */}
+          <h2 className={`text-3xl font-bold text-center mb-3 ${getResultColor()}`}>
+            {getTitle()}
+          </h2>
 
-        {/* Login Prompt for Guests */}
-        {showLoginPrompt && isGuest && (
-          <div className="mb-6 p-4 bg-zinc-800/50 rounded-lg border border-white/10">
-            <p className="text-sm text-gray-300 mb-4 text-center">
-              Sign up or log in to access full game review, save your games, and track your progress!
-            </p>
+          {/* Message */}
+          <p className="text-center text-gray-300 mb-6">
+            {message}
+          </p>
+
+          {ratingChange && !isGuest && (
+            <div className="mb-6 p-4 bg-zinc-800/60 rounded-lg border border-white/10 text-center">
+              <p className="text-sm text-gray-300">
+                Rating: {ratingChange.oldRating} → {ratingChange.newRating} ({ratingChange.delta >= 0 ? "+" : ""}{ratingChange.delta})
+              </p>
+            </div>
+          )}
+
+          {/* Login Prompt for Guests */}
+          {showLoginPrompt && isGuest && (
+            <div className="mb-6 p-4 bg-zinc-800/50 rounded-lg border border-white/10">
+              <p className="text-sm text-gray-300 mb-4 text-center">
+                Sign up or log in to access full game review, save your games, and track your progress!
+              </p>
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleSignup}
+                  variant="primary"
+                  className="flex-1"
+                >
+                  Sign Up
+                </Button>
+                <Button
+                  onClick={handleLogin}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  Log In
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Buttons */}
+          {!showLoginPrompt && (
             <div className="flex gap-3">
               <Button
-                onClick={handleSignup}
+                onClick={handleBack}
                 variant="primary"
                 className="flex-1"
               >
-                Sign Up
+                {isGuest ? "Play Another Match" : "Back to Dashboard"}
               </Button>
               <Button
-                onClick={handleLogin}
+                onClick={handleReview}
                 variant="secondary"
                 className="flex-1"
               >
-                Log In
+                Review Game
               </Button>
             </div>
-          </div>
-        )}
-
-        {/* Buttons */}
-        {!showLoginPrompt && (
-          <div className="flex gap-3">
-            <Button
-              onClick={handleBack}
-              variant="primary"
-              className="flex-1"
-            >
-              {isGuest ? "Play Another Match" : "Back to Dashboard"}
-            </Button>
-            <Button
-              onClick={handleReview}
-              variant="secondary"
-              className="flex-1"
-            >
-              Review Game
-            </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

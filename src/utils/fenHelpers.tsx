@@ -1,4 +1,5 @@
 import { PieceDropHandlerArgs } from "react-chessboard";
+import { PieceSymbol } from "chess.js";
 
 // Manually apply premove to FEN (bypassing chess.js validation) 
 // Used for visual preview of premoves
@@ -6,7 +7,8 @@ export function applyPremoveToFen(
   fen: string,
   from: string,
   to: string,
-  _piece: PieceDropHandlerArgs["piece"]
+  _piece: PieceDropHandlerArgs["piece"],
+  promotionPiece?: PieceSymbol // Add promotion parameter
 ): string | null {
   try {
     const [board, turn, castling, enPassant, halfMove, fullMove] =
@@ -37,15 +39,13 @@ export function applyPremoveToFen(
     const pieceAtSource = boardArray[fromRank]?.[fromFile];
     if (!pieceAtSource) return null;
 
-    // Move the piece
+    // Determine the piece to place at destination
     let movedPiece = pieceAtSource;
-
-    // Auto-promote pawns that reach the last rank (for visual preview)
-    const isPawn = movedPiece.toLowerCase() === 'p';
-    const targetRank = to[1]; // '1' to '8'
-    if (isPawn && (targetRank === '1' || targetRank === '8')) {
-      // Promote to queen (same color as the pawn)
-      movedPiece = movedPiece === 'P' ? 'Q' : 'q';
+    
+    // If promotion piece is provided, use it
+    if (promotionPiece) {
+      const isWhite = pieceAtSource === pieceAtSource.toUpperCase();
+      movedPiece = isWhite ? promotionPiece.toUpperCase() : promotionPiece.toLowerCase();
     }
 
     boardArray[toRank][toFile] = movedPiece;
@@ -82,7 +82,7 @@ export function applyPremoveToFen(
 // Recalculate preview position from remaining premoves
 export function recalculatePreviewPosition(
   baseFen: string,
-  remainingPremoves: PieceDropHandlerArgs[]
+  remainingPremoves: Array<PieceDropHandlerArgs & { promotion?: PieceSymbol; needsPromotion?: boolean }>
 ): string | null {
   let currentFen = baseFen;
 
@@ -91,7 +91,8 @@ export function recalculatePreviewPosition(
       currentFen,
       premove.sourceSquare,
       premove.targetSquare as string,
-      premove.piece
+      premove.piece,
+      premove.promotion // Pass promotion piece if available
     );
 
     if (!newFen) return null;
