@@ -615,21 +615,21 @@ export default function ComputerGame() {
       let resultType: "win" | "loss" | "draw" = "draw";
       
       if (currentGame.isCheckmate()) {
-        const winner = currentGame.turn() === "w" ? "Black" : "White";
-        resultText = `Checkmate! ${winner} wins!`;
+        const winner = currentGame.turn() === "w" ? "white" : "black";
         
         // Determine if player won or lost
-        if ((playerColor === "white" && winner === "White") || 
-            (playerColor === "black" && winner === "Black")) {
+        if (playerColor === winner) {
+          resultText = "Checkmate! You Win!";
           resultType = "win";
         } else {
+          resultText = "Checkmate! Computer Wins! You Lost.";
           resultType = "loss";
         }
       } else if (currentGame.isDraw()) {
-        resultText = "Draw!";
+        resultText = "It's a Draw!";
         resultType = "draw";
       } else if (currentGame.isStalemate()) {
-        resultText = "Stalemate! Draw.";
+        resultText = "Stalemate! It's a Draw.";
         resultType = "draw";
       } else if (currentGame.isThreefoldRepetition()) {
         resultText = "Draw by repetition!";
@@ -1083,7 +1083,6 @@ export default function ComputerGame() {
             isOpen={isResultModalOpen}
             onClose={() => {
               setIsResultModalOpen(false);
-              resetGame();
             }}
             result={gameResult.type}
             message={gameResult.message}

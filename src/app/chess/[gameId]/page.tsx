@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, use } from "react";
 import { Chess, Square, PieceSymbol } from "chess.js";
 import {
   Chessboard,
@@ -79,7 +79,6 @@ export default function ChessPage() {
   // For guest users, use guestId as identifier
   const playerId = userId || guestId;
 
-  const [mounted, setMounted] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [showAnimations] = useState(true);
@@ -89,6 +88,9 @@ export default function ChessPage() {
   const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
   const playerColorRef = useRef<"white" | "black">("white");
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
+  const chatRef = useRef<HTMLDivElement | null>(null);
+  const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const moveRef = useRef<HTMLDivElement | null>(null);
 
   // Timer states
   const [whiteTime, setWhiteTime] = useState<number>(600);
@@ -128,14 +130,11 @@ export default function ChessPage() {
   const [moveFrom, setMoveFrom] = useState("");
   const [optionSquares, setOptionSquares] = useState<Record<string, React.CSSProperties>>({});
   const [checkSquare, setCheckSquare] = useState<string | null>(null);
-  const [boardSize, setBoardSize] = useState(() => {
-    // Initialize with a valid size
-    if (typeof window === "undefined") return 400;
-    const width = window.innerWidth - 16;
-    if (width <= 700) return width;
-    if (width <= 1024) return Math.min(window.innerHeight - 200, width - 100, 600);
-    return Math.min(window.innerHeight - 192, 600);
-  });
+
+  // Board size state (controlled)
+  const [boardSize, setBoardSize] = useState<number>(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const [promotionMove, setPromotionMove] = useState<{ from: Square; to: Square } | null>(null);
   const [isPremovePromotion, setIsPremovePromotion] = useState(false);
 
@@ -197,6 +196,7 @@ export default function ChessPage() {
     }
   };
 
+
   // Fetch initial game state
   useEffect(() => {
     const gameId = getGameIdFromPath();
@@ -212,22 +212,13 @@ export default function ChessPage() {
         const blackId = String(game.blackPlayerId).trim();
         const currentId = String(playerId).trim();
 
-        console.log('=== Player Color Determination ===');
-        console.log('White Player ID:', whiteId);
-        console.log('Black Player ID:', blackId);
-        console.log('Current Player ID:', currentId);
-        console.log('Is Guest:', !!guestId);
-
         if (whiteId === currentId) {
-          console.log('Setting player as WHITE');
           setPlayerColor("white");
           setBoardOrientation("white");
         } else if (blackId === currentId) {
-          console.log('Setting player as BLACK');
           setPlayerColor("black");
           setBoardOrientation("black");
         } else {
-          console.error('This should not happen. Defaulting to white.');
           setPlayerColor("white");
           setBoardOrientation("white");
         }
@@ -365,9 +356,6 @@ export default function ChessPage() {
     });}
 
     newSocket.on("connect", () => {
-      console.log('Socket connected, joining game:', gameId);
-      console.log('Player ID:', playerId);
-      console.log('Is Guest:', !!guestId);
       newSocket.emit("join-game", gameId);
     });
 
@@ -377,7 +365,6 @@ export default function ChessPage() {
     });
 
     newSocket.on("game-state", (data) => {
-      console.log('Received game-state event:', data);
       if (data?.fen) {
         chessGame.load(data.fen);
         setChessPosition(chessGame.fen());
@@ -398,16 +385,9 @@ export default function ChessPage() {
     });
 
     newSocket.on("move-made", (data) => {
-      console.log('Received move-made event:', data);
-      console.log('Current username:', username);
-      console.log('Current guestId:', guestId);
-      console.log('Move from player:', data?.player);
-
       if(data?.player === username || data?.player === guestId) {
-        console.log('Ignoring own move');
         return;
       }
-      console.log('Applying opponent move');
       try {
         // Apply opponent's move to actual board
         if (data?.move) {
@@ -618,30 +598,6 @@ export default function ChessPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId, username]);
 
-  // Resize board dynamically
-  useEffect(() => {
-    function updateSize() {
-      if (typeof window === "undefined") return;
-      setIsDesktop(window.innerWidth >= 1024);
-      const width = window.innerWidth - 16;
-
-      if (window.innerWidth <= 700) {
-        setBoardSize(width);
-      } else if (window.innerWidth <= 1024) {
-        // Tablet: Use smaller dimension with some padding
-        const height = window.innerHeight - 200;
-        setBoardSize(Math.min(height, width - 100, 600));
-      } else {
-        // Desktop: Account for 2 player info boxes (2 * 56px with padding) + some margin
-        const availableHeight = window.innerHeight - 112 - 100;
-        setBoardSize(Math.min(availableHeight, 600));
-      }
-    }
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
-  }, []);
-
   useEffect(() => {
     // When moves update, set currentMoveIndex to the live position
     // Live position = total number of half-moves (one past the last move)
@@ -673,7 +629,7 @@ export default function ChessPage() {
 
     // Handle browser back/forward button
     const handlePopState = (e: PopStateEvent) => {
-      if (isNavigatingAway) return; // Allow if already confirmed
+      if (isNavigatingAway) return;
       
       // User pressed back/forward, but we want to stay and show modal
       e.preventDefault();
@@ -684,7 +640,7 @@ export default function ChessPage() {
       // Show the modal to ask user
       setPendingNavigation(() => () => {
         isNavigatingAway = true;
-        window.history.back(); // Actually go back after resignation
+        window.history.back();
       });
       setShowLeaveConfirm(true);
     };
@@ -709,9 +665,9 @@ export default function ChessPage() {
         // Store the navigation action
         if (link) {
           const href = link.getAttribute('href');
-          setPendingNavigation(() => () => router.push(href || '/dashboard'));
+          setPendingNavigation(() => () => router.replace(href || '/dashboard'));
         } else {
-          setPendingNavigation(() => () => router.push('/dashboard'));
+          setPendingNavigation(() => () => router.replace('/dashboard'));
         }
         
         setShowLeaveConfirm(true);
@@ -839,8 +795,7 @@ export default function ChessPage() {
     });
   };
 
-  // Move handling
-  // Get move options
+  // Move handling Get move options
   function getMoveOptions(square: Square) {
     const moves = chessGame.moves({ square, verbose: true });
     if (moves.length === 0) {
@@ -938,13 +893,11 @@ export default function ChessPage() {
       const moveResult = chessGame.move(moveData);
 
       if (moveResult) {
-        // Move was successful, update UI
         setChessPosition(chessGame.fen());
         updateMovesFromHistory();
 
         const gameId = getGameIdFromPath();
         if (gameId && socket) {
-          // Use WebSocket only for real-time updates
           socket.emit("make-move", { gameId, move: moveData });
         }
         advanceLocalClockAfterMove(playerColorRef.current);
@@ -974,7 +927,6 @@ export default function ChessPage() {
     
     const fullHistory = chessGame.history();
     if (currentMoveIndex < fullHistory.length) {
-      // Remove: toast.info("Return to current position to make moves");
       return false;
     }
 
@@ -1039,7 +991,6 @@ export default function ChessPage() {
       const moveResult = chessGame.move(moveData);
 
       if (moveResult) {
-        // Move was successful
         setChessPosition(chessGame.fen());
         updateMovesFromHistory();
 
@@ -1279,6 +1230,75 @@ export default function ChessPage() {
     setCheckSquare(kingSquare);
   }
 
+  // Responsive board sizing
+  // useEffect(() => {
+  //   function computeBoardSize() {
+  //     if (typeof window === "undefined") return;
+
+  //     const width = window.innerWidth;
+  //     const height = window.innerHeight;
+
+  //     const isDesk = width >= 1024;
+  //     setIsDesktop(isDesk);
+
+  //     if (isDesk) {
+  //       const maxBoard = 540;
+  //       const availableWidth = Math.max(400, Math.min(width * 0.62, width - 520));
+  //       const availableHeight = Math.max(400, height - 200);
+  //       const size = Math.max(360, Math.min(maxBoard, Math.min(availableWidth, availableHeight)));
+  //       setBoardSize(Math.floor(size));
+  //     } else {
+  //       const mobileWidth = Math.min(width - 32, height - 160);
+  //       setBoardSize(Math.max(260, Math.floor(mobileWidth)));
+  //     }
+  //   }
+
+  //   computeBoardSize();
+  //   window.addEventListener("resize", computeBoardSize);
+  //   return () => window.removeEventListener("resize", computeBoardSize);
+  // }, []);
+
+  useEffect(() => {
+  function computeBoardSize() {
+    if (typeof window === "undefined") return;
+
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    // 🔥 Improved device detection
+    const isLandscape = width > height * 1.2; 
+    const isLargeWidth = width >= 1000;
+
+    const isDeskView = isLandscape || isLargeWidth;
+    setIsDesktop(isDeskView);
+
+    if (isDeskView) {
+      // DESKTOP / LANDSCAPE BEHAVIOR
+      const maxBoard = 540;
+
+      // ensure board is not taller than viewport minus UI
+      const availableHeight = Math.max(400, height - 180);
+
+      // ensure board does not overflow sidebar + padding
+      const availableWidth = Math.max(380, width - 520);
+
+      const size = Math.min(maxBoard, availableHeight, availableWidth);
+
+      setBoardSize(Math.floor(size));
+    } 
+    else {
+      // MOBILE / PORTRAIT
+      const mobileWidth = Math.min(width - 32, height - 140);
+      setBoardSize(Math.max(240, Math.floor(mobileWidth)));
+    }
+  }
+
+  computeBoardSize();
+  window.addEventListener("resize", computeBoardSize);
+  return () => window.removeEventListener("resize", computeBoardSize);
+}, []);
+
+
   // Board styling and configuration
   const { chessboardOptions } = useBoardStyling({
     optionSquares,
@@ -1294,7 +1314,7 @@ export default function ChessPage() {
     onSquareClick,
     onSquareRightClick,
     canDragPiece,
-    checkSquare, // Add this prop
+    checkSquare,
   });
 
   // Determine whose turn it is
@@ -1319,18 +1339,36 @@ export default function ChessPage() {
   }, [playerColor]);
 
   useEffect(() => {
-    setMounted(true);
+    if (chatRef.current) {
+      setTimeout(() => {
+        chatRef.current?.scrollTo({
+          top: chatRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 0);
+    }
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (moveRef.current) {
+      moveRef.current.scrollTop = moveRef.current.scrollHeight;
+    }
+  }, [moves, currentMoveIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+        redirectTimerRef.current = null;
+      }
+    };
   }, []);
 
-  if (!mounted) {
-    return null;
-  }
-
   return (
-    <div className="h-full lg:h-screen w-full flex flex-col">
+    <div className="h-full lg:h-screen lg:overflow-hidden w-full flex flex-col">
       {/* MOBILE HEADER */}
       <div className="flex lg:hidden justify-between items-center pt-2 pb-3 px-4 border-white/10">
-        <button onClick={() => router.push("/")} className="text-2xl font-bold hover:text-primary transition-colors">
+        <button onClick={() => router.replace("/")} className="text-2xl font-bold hover:text-primary transition-colors">
           Chess
         </button>
         <GameControls
@@ -1341,52 +1379,70 @@ export default function ChessPage() {
         />
       </div>
 
-      {/* DESKTOP LAYOUT */}
-      <div className="hidden lg:flex h-screen w-full justify-center items-center px-6 overflow-hidden">
-        <button onClick={() => router.push("/")} className="absolute top-4 left-4 text-2xl font-bold hover:text-primary transition-colors">
+      {/* DESKTOP HEADER */}
+      <div className="hidden lg:flex justify-between items-center pt-2 pb-3 px-4 border-white/10 overflow-hidden">
+        <button onClick={() => router.replace("/")} className="absolute top-4 left-4 text-2xl font-bold hover:text-primary transition-colors">
           Chess
         </button>
-        <div className="flex gap-8 max-w-[1400px]">
-        {/* LEFT SECTION - Logo + Board */}
-        <div className="flex flex-col gap-0 items-center justify-center h-full">
-          {/* Top Player Info - Opponent */}
-          <div className="w-[540px] flex items-center justify-between bg-white/5 rounded-lg p-2 backdrop-blur-xs">
-            <div className="flex items-center gap-2.5">
-              <div className="w-11 h-11 rounded-full bg-zinc-700 flex items-center justify-center overflow-hidden">
-                <img
-                  src={opponent?.avatar || "/avatar8.svg"}
-                  alt="opponent"
-                  className="w-full h-full object-cover"
-                />
+      </div>
+
+      {/* MAIN LAYOUT */}
+      <div
+        ref={containerRef}
+        className="flex gap-6 justify-center items-center flex-col lg:flex-row px-3 lg:px-6 py-2 h-full"
+        style={isDesktop ? { minHeight: `${boardSize + 160}px` } : {}}
+      >
+        {/* LEFT: Board + player info */}
+        <div className="flex flex-col items-center justify-between lg:flex-shrink-0 h-full">
+          {/* Top player info */}
+            <div className="w-full flex items-center justify-between bg-white/2 rounded-lg p-2 backdrop-blur-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full bg-zinc-700 flex items-center justify-center overflow-hidden">
+                  <img
+                    src={opponent?.avatar || "/avatar8.svg"}
+                    alt="opponent"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <span className="text-base font-medium">
+                  {opponent?.username || "Opponent"}
+                </span>
               </div>
-              <span className="text-base font-medium">
-                {opponent?.username || "Opponent"}
+              <span className={`text-lg font-mono px-3 py-1.5 rounded transition-all duration-300 ${
+                !isMyTurn ? "bg-primary text-black font-bold shadow-lg animate-pulse" : "bg-zinc-800"
+              }`}>
+                {formatTime(playerColor === "white" ? blackTime : whiteTime)}
               </span>
             </div>
-            <span className={`text-lg font-mono px-3 py-1.5 rounded transition-all duration-300 ${
-              !isMyTurn
-                ? "bg-primary text-black font-bold shadow-lg animate-pulse"
-                : "bg-zinc-800"
-            }`}>
-              {formatTime(playerColor === "white" ? blackTime : whiteTime)}
-            </span>
-          </div>
 
-          {/* Chessboard */}
-          <div 
-          className="relative flex justify-center items-center"
-  style={{ width: `${boardSize + 50}px`, height: `${boardSize + 50 }px`, minWidth: `${boardSize}px`, minHeight: `${boardSize}px` }}
-  >
+          {/* Chessboard container: only render board when we have a positive boardSize */}
+          <div
+            className="flex items-center justify-center bg-transparent"
+            style={{
+              width: isDesktop ? `${boardSize}px` : "100%",
+              height: isDesktop ? `${boardSize}px` : `${boardSize}px`,
+              minWidth: isDesktop ? `${boardSize}px` : undefined,
+            }}
+          >
             {(promotionMove || (isPremovePromotion && pendingPromotionPremove)) && (
               <PromotionDialog onSelect={handlePromotion} />
             )}
-            <Chessboard options={chessboardOptions} />
+
+            {/* Render Chessboard only when boardSize > 0 to avoid "Square width not found" */}
+            {boardSize > 0 && (
+              <div style={{ width: isDesktop ? boardSize : "100%", height: isDesktop ? boardSize : boardSize }}
+                className="flex items-center justify-center">
+                {/* Key ensures react-chessboard recalculates layout when boardSize changes */}
+                <Chessboard key={boardSize} options={chessboardOptions} />
+              </div>
+            )}
           </div>
 
+
           {/* Bottom Player Info - You */}
-          <div className="w-[540px] flex items-center justify-between bg-white/5 -pt-2 rounded-lg p-2 backdrop-blur-xs">
-            <div className="flex items-center gap-2.5">
-              <div className="w-11 h-11 rounded-full flex items-center justify-center overflow-hidden">
+          <div className="w-full flex items-center justify-between bg-white/2 rounded-lg p-2 backdrop-blur-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full bg-zinc-700 flex items-center justify-center overflow-hidden">
                 <img
                   src={user?.avatar ?? "/avatar7.svg"}
                   alt="you"
@@ -1409,9 +1465,9 @@ export default function ChessPage() {
         </div>
 
         {/* RIGHT SECTION - Controls + Move History + Chat */}
-        <div className="flex flex-col gap-4 overflow-hidden" style={{ width: "500px" }}>
+        <div className="w-full lg:w-[520px] flex flex-col gap-4 h-full">
           {/* Top Controls Row */}
-          <div className="flex items-center gap-24">
+          <div className="hidden lg:flex items-center gap-24 flex-shrink-0">
             <span className="text-lg text-gray-200">
               {timeControlDisplay}
             </span>
@@ -1435,7 +1491,7 @@ export default function ChessPage() {
           </div>
 
           {/* Navigation Controls */}
-          <div className="flex gap-2 flex-shrink-0">
+          <div className={`flex gap-2 flex-shrink-0 ${isDesktop ? "justify-center lg:justify-start" : "fixed bottom-4 z-10 border border-white/10 backdrop-blur-xs rounded-lg py-2 px-4 left-1/2 transform -translate-x-1/2"}`}>
             <button
               className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
               onClick={() => goToMove(-1)}
@@ -1470,8 +1526,8 @@ export default function ChessPage() {
             </button>
           </div>
 
-          {/* Move History Table */}
-          <div className="bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden flex-shrink-0 border border-white/10">
+          {/* Move History */}
+          <div className="bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden border border-white/10 flex-shrink-0">
             <div className="bg-white/4 px-4 py-3">
               <div className="grid grid-cols-3 gap-4 text-base font-semibold">
                 <div>White</div>
@@ -1479,7 +1535,7 @@ export default function ChessPage() {
                 <div className="text-right">Black</div>
               </div>
             </div>
-            <div className="h-[180px] overflow-y-auto p-4">
+            <div className="h-[180px] overflow-y-auto p-4" ref={moveRef}>
               {moves.length === 0 ? (
                 <p className="text-gray-500 text-center py-4 text-base">No moves yet</p>
               ) : (
@@ -1523,33 +1579,22 @@ export default function ChessPage() {
             </div>
           </div>
 
-          {/* Chat Panel for Desktop */}
-          <div className="flex-1 bg-white/2 rounded-lg backdrop-blur-xs flex flex-col overflow-hidden min-h-0 border border-white/10">
+          {/* Chat Panel*/}
+          <div className="hidden lg:flex bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden border border-white/10 flex-col flex-1 min-h-0">
             <div className="bg-white/4 px-4 py-3 flex items-center justify-between flex-shrink-0">
               <h3 className="font-semibold text-base">Chat</h3>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+            <div className="flex-1 overflow-y-auto p-4 min-h-0" ref={chatRef}>
               {chatMessages.length === 0 ? (
                 <div className="text-center text-gray-500 mt-8">
                   <p className="text-base">No messages yet</p>
                 </div>
               ) : (
                 chatMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.sender === "me" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[75%] rounded-lg p-3 ${
-                        msg.sender === "me"
-                          ? "bg-slate-700 text-white rounded-br-none"
-                          : "bg-zinc-700 text-white rounded-bl-none"
-                      }`}
-                    >
+                  <div key={msg.id} className={`flex ${msg.sender === "me" ? "justify-end" : "justify-start"} mb-2`}>
+                    <div className={`max-w-[75%] rounded-lg p-2 ${msg.sender === "me" ? "bg-slate-700 text-white rounded-br-none" : "bg-zinc-700 text-white rounded-bl-none"}`}>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold">
-                          {msg.sender === "me" ? "You" : "Opponent"}
-                        </span>
+                        <span className="text-sm font-semibold">{msg.sender === "me" ? "You" : "Opponent"}</span>
                         <span className="text-xs text-gray-400">
                           {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </span>
@@ -1560,11 +1605,12 @@ export default function ChessPage() {
                 ))
               )}
             </div>
+
             <div className="p-4 border-t border-zinc-800 flex-shrink-0">
               <div className="flex gap-2 items-center">
                 <input
                   type="text"
-                  id="chatInput"
+                  id="chatInputDesktop"
                   placeholder="Chat with opponent. Start typing"
                   className="flex-1 bg-zinc-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary text-base placeholder:text-gray-500"
                   onKeyDown={(e) => {
@@ -1584,7 +1630,7 @@ export default function ChessPage() {
                 />
                 <button
                   onClick={() => {
-                    const input = document.getElementById("chatInput") as HTMLInputElement;
+                    const input = document.getElementById("chatInputDesktop") as HTMLInputElement;
                     if (input && input.value.trim() && socket && getGameIdFromPath()) {
                       const message = input.value.trim();
                       const newMessage: Message = {
@@ -1609,67 +1655,28 @@ export default function ChessPage() {
             </div>
           </div>
         </div>
-        </div>
-      </div>
 
-      {/* MOBILE LAYOUT */}
-      <div className="flex lg:hidden gap-2 justify-center items-start flex-col relative">
-        {/* CHESSBOARD */}
-        <div className="relative flex justify-center items-center w-full h-full">
-          {(promotionMove || (isPremovePromotion && pendingPromotionPremove)) && (
-            <PromotionDialog onSelect={handlePromotion} />
-          )}
-          <Chessboard options={chessboardOptions} />
-        </div>
-
-        {/* SIDEBAR */}
-        <div className="w-full flex flex-col justify-between h-full px-4 pb-4">
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center p-1 sm:p-3 rounded-lg">
-              <PlayerInfo
-                username={username || "You"}
-                avatar={user?.avatar ?? "/avatar7.svg"}
-                isCurrentPlayer
-                isMyTurn={isMyTurn}
-                timeRemaining={formatTime(playerColor === "white" ? whiteTime : blackTime)}
-              />
-              <div className="flex justify-center text-gray-400">vs</div>
-              <PlayerInfo
-                username={opponent?.username || "Opponent"}
-                avatar={opponent?.avatar || "/avatar8.svg"}
-                isMyTurn={!isMyTurn}
-                timeRemaining={formatTime(playerColor === "white" ? blackTime : whiteTime)}
-              />
-            </div>
-            <MoveHistory
-              moves={moves}
-              currentMoveIndex={currentMoveIndex}
-              onNavigate={goToMove}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Chat Panel */}
-      <div className="lg:hidden">
-        <ChatPanel
-          isOpen={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
-          socket={socket}
-          gameId={getGameIdFromPath()}
-          opponentName={opponent?.username || "Opponent"}
-          messages={chatMessages}
-          onAddMessage={handleAddChatMessage}
-        />
-      </div>
-      
+      {/* Mobile Chat Drawer (unchanged) */}
+      <ChatPanel
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        socket={socket}
+        gameId={getGameIdFromPath()}
+        opponentName={opponent?.username || "Opponent"}
+        messages={chatMessages}
+        onAddMessage={handleAddChatMessage}
+      />
 
       {gameResult && (
         <GameResultModal
           isOpen={isResultModalOpen}
           result={gameResult.type}
           message={gameResult.message}
-          onClose={handleResultModalClose}
+          onClose={() =>{handleResultModalClose();
+            redirectTimerRef.current = setTimeout(() => {
+                router.replace("/dashboard");
+              }, 5000);}
+          }
           isGuest={!!guestId}
           ratingChange={guestId ? undefined : ratingChange ?? undefined}
         />
@@ -1708,6 +1715,8 @@ export default function ChessPage() {
           setPendingNavigation(null);
         }}
       />
+
+    </div>
     </div>
   );
 }
