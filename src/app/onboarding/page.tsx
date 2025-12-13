@@ -22,8 +22,19 @@ export default function Onboarding() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [socketId, setSocketId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
-  const [name, setName] = useState("");
-  const [avatar, setAvatar] = useState(() => getAvatarUrl(getRandomAvatar()));
+  const [name, setName] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("guestName") || "";
+    }
+    return "ab";
+  });
+  const [avatar, setAvatar] = useState(() => {
+    if (typeof window !== "undefined") {
+      const storedAvatar = localStorage.getItem("guestAvatar");
+      return storedAvatar || getAvatarUrl(getRandomAvatar());
+    }
+    return getAvatarUrl(getRandomAvatar());
+  });
   const [matchFound, setMatchFound] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [direction, setDirection] = useState<"left" | "right">("right");
@@ -264,8 +275,8 @@ export default function Onboarding() {
             onClick={next}
             disabled={
               step === 3 ||
-              (step === 0 && !name.trim().length) ||
-              (step === 1 && (!name.trim().length || connectingSocket))
+              (step === 0 && name.trim().length === 0) ||
+              (step === 1 && (name.trim().length === 0 || connectingSocket))
             }
             className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 transition-colors"
           >
@@ -297,7 +308,11 @@ export default function Onboarding() {
                     label="Your Name"
                     id="name"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      const newName = e.target.value;
+                      setName(newName);
+                      localStorage.setItem("guestName", newName);
+                    }}
                     required={true}
                   />
                   <Button
@@ -328,7 +343,10 @@ export default function Onboarding() {
                           alt=""
                           className={`h-20 w-20 rounded-full bg-gray-800 cursor-pointer hover:ring-1 hover:ring-primary hover:scale-90 ease-in-out transform transition-all object-cover
                   ${avatar === avatarImg ? "ring-3 ring-primary" : ""}`}
-                          onClick={() => setAvatar(avatarImg)}
+                          onClick={() => {
+                            setAvatar(avatarImg);
+                            localStorage.setItem("guestAvatar", avatarImg);
+                          }}
                         ></Image>
                       );
                     })}

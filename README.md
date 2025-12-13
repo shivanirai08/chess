@@ -3,6 +3,32 @@
 
 A fast, competitive, and intelligent online chess platform built for players of all skill levels. Play instantly through **Guest Mode**, compete with real opponents via **matchmaking**, or sharpen your strategies against a powerful **Stockfish AI** engine.
 
+## 📸 Platform Preview
+
+<div align="center">
+  <table>
+    <tr>
+      <td width="50%">
+        <img src="./public/screens/herosection.png" alt="Hero Section" width="100%"/>
+        <p align="center"><b>Welcome Screen</b></p>
+      </td>
+      <td width="50%">
+        <img src="./public/screens/gamesetup.png" alt="Game Setup" width="100%"/>
+        <p align="center"><b>Game Setup & Time Controls</b></p>
+      </td>
+    </tr>
+    <tr>
+      <td width="50%">
+        <img src="./public/screens/matchmaking.png" alt="Matchmaking" width="100%"/>
+        <p align="center"><b>Real-Time Matchmaking</b></p>
+      </td>
+      <td width="50%">
+        <img src="./public/screens/match.png" alt="Match Found" width="100%"/>
+        <p align="center"><b>Match Found</b></p>
+      </td>
+    </tr>
+  </table>
+</div>
 
 # 🌟 Key Features
 
@@ -101,7 +127,32 @@ This platform focuses on:
 
 Whether you're learning, practicing, or sweating through blitz matches — this platform gives you a world-class chess experience.
 
+## 🎯 Gameplay Experience
 
+<div align="center">
+  <table>
+    <tr>
+      <td width="50%">
+        <img src="./public/screens/chess.png" alt="Live Chess Game" width="100%"/>
+        <p align="center"><b>Live Multiplayer Game</b></p>
+      </td>
+      <td width="50%">
+        <img src="./public/screens/vscomputer.png" alt="VS Computer" width="100%"/>
+        <p align="center"><b>AI Opponent (Stockfish)</b></p>
+      </td>
+    </tr>
+    <tr>
+      <td width="50%">
+        <img src="./public/screens/result.png" alt="Game Result" width="100%"/>
+        <p align="center"><b>Game Result & Rating </b></p>
+      </td>
+      <td width="50%">
+        <img src="./public/screens/dashboard.png" alt="Dashboard" width="100%"/>
+        <p align="center"><b>Performance Dashboard</b></p>
+      </td>
+    </tr>
+  </table>
+</div>
 
 ## Tech Stack
 

@@ -91,6 +91,7 @@ export default function ChessPage() {
   const chatRef = useRef<HTMLDivElement | null>(null);
   const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const moveRef = useRef<HTMLDivElement | null>(null);
+  const disconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Timer states
   const [whiteTime, setWhiteTime] = useState<number>(600);
@@ -112,6 +113,7 @@ export default function ChessPage() {
   const [ratingChange, setRatingChange] = useState<RatingDelta | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  const [isDesktopChatOpen, setIsDesktopChatOpen] = useState(true);
   const [timeControlDisplay, setTimeControlDisplay] = useState<string>("Blitz • 3 min");
 
   // Dialog states
@@ -131,12 +133,23 @@ export default function ChessPage() {
   const [optionSquares, setOptionSquares] = useState<Record<string, React.CSSProperties>>({});
   const [checkSquare, setCheckSquare] = useState<string | null>(null);
 
+  // Jump management
+  const didInitialBackJump = useRef(false);
+  const didFinalForwardJump = useRef(false);
+
   // Board size state (controlled)
   const [boardSize, setBoardSize] = useState<number>(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [promotionMove, setPromotionMove] = useState<{ from: Square; to: Square } | null>(null);
   const [isPremovePromotion, setIsPremovePromotion] = useState(false);
+  
+  // Track connection states to detect real disconnections vs initial connection delays
+  const connectionStateRef = useRef({ 
+    whiteConnected: false, 
+    blackConnected: false,
+    bothConnectedOnce: false // Track if both were ever connected
+  });
 
   // Premove management via custom hook
   const {
@@ -243,6 +256,10 @@ export default function ChessPage() {
           // Update position and moves display
           setChessPosition(chessGame.fen());
           updateMovesFromHistory();
+          
+          // If game has moves, both players were connected at some point
+          // Set flag to enable disconnect detection even after page reload
+          connectionStateRef.current.bothConnectedOnce = true;
         } else if (game.fen) {
           // Fallback: load FEN directly if no moves array
           try {
@@ -348,11 +365,19 @@ export default function ChessPage() {
       newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
       auth: { token },
       transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
     });}
     else {
       newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
       auth: { guestId : guestId },
       transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
     });}
 
     newSocket.on("connect", () => {
@@ -362,6 +387,10 @@ export default function ChessPage() {
     newSocket.on("connect_error", (err) => {
       console.error("Socket connection error:", err);
       toast.error(`Connection error: ${err.message}`);
+    });
+
+    newSocket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
     });
 
     newSocket.on("game-state", (data) => {
@@ -443,22 +472,33 @@ export default function ChessPage() {
       if (data?.result) {
         const isWinner = data.winner?.userId === playerId;
         let message = "";
+        let resultType: "win" | "loss" | "draw" | "abandoned" = "draw";
 
-        if (data.reason === "TIMEOUT") {
-          message = isWinner ? "You win on time!" : "You lost on time!";
+        if (data.reason === "ABANDONED") {
+          resultType = "abandoned";
+          message = isWinner 
+            ? "Opponent abandoned the game." 
+            : "You abandoned the game.";
+        } else if (data.reason === "TIMEOUT") {
+          resultType = isWinner ? "win" : "loss";
+          message = isWinner ? "Opponent ran out of time." : "You ran out of time!";
         } else if (data.reason === "CHECKMATE") {
+          resultType = isWinner ? "win" : "loss";
           message = isWinner ? "Checkmate! You win!" : "Checkmate! You lose!";
         } else if (data.reason === "RESIGNATION") {
+          resultType = isWinner ? "win" : "loss";
           message = isWinner ? "Opponent resigned! You win!" : "You resigned";
         } else if (data.reason?.startsWith("DRAW")) {
+          resultType = "draw";
           message = "The game ended in a draw.";
         } else {
+          resultType = data.result === "draw" ? "draw" : (isWinner ? "win" : "loss");
           message = data.result === "draw" ? "The game ended in a draw." : 
                     (isWinner ? "You win!" : "You lose!");
         }
 
         setGameResult({
-          type: data.result === "draw" ? "draw" : (isWinner ? "win" : "loss"),
+          type: resultType,
           message
         });
       }
@@ -511,10 +551,6 @@ export default function ChessPage() {
       setIsResultModalOpen(true);
     });
 
-    newSocket.on("players-connected", (data) => {
-      console.log("Players connected:", data);
-    });
-
     newSocket.on("error", (err) => {
       console.error("Socket error:", err);
       toast.error(err.message || "Server error occurred");
@@ -535,8 +571,8 @@ export default function ChessPage() {
         };
         handleAddChatMessage(newMessage);
 
-        // Show toast notification if chat is closed
-        if (!isChatOpen) {
+        // Show toast notification if chat is closed (mobile or desktop)
+        if (!isChatOpen || !isDesktopChatOpen) {
           toast.info(`${opponent?.username || "Opponent"}: ${data.message}`, {
             duration: 3000,
           });
@@ -579,12 +615,96 @@ export default function ChessPage() {
       setIsDrawOffering(false);
     });
 
+    newSocket.on("players-connected", (data) => {
+      console.log("Players connected:", data);
+      
+      const whiteConnected = data?.whiteConnected;
+      const blackConnected = data?.blackConnected;
+      // Create a COPY of previous state (not a reference)
+      const previousState = { ...connectionStateRef.current };
+      
+      // Update the tracked connection state
+      connectionStateRef.current.whiteConnected = whiteConnected;
+      connectionStateRef.current.blackConnected = blackConnected;
+      
+      // Check if both players are now connected (first time)
+      if (whiteConnected && blackConnected && !previousState.bothConnectedOnce) {
+        connectionStateRef.current.bothConnectedOnce = true;
+        console.log("Both players connected for the first time");
+        return; // Don't process as disconnect, just mark as both connected
+      }
+      
+      // If both players reconnected, clear any pending disconnect timer
+      if (whiteConnected && blackConnected && previousState.bothConnectedOnce) {
+        if (disconnectTimerRef.current) {
+          console.log("Both players reconnected - canceling disconnect timer");
+          clearTimeout(disconnectTimerRef.current);
+          disconnectTimerRef.current = null;
+          toast.success("Opponent reconnected!");
+        }
+        return;
+      }
+      
+      // Only process as potential abandonment if:
+      // 1. Both players were previously connected
+      // 2. Game is still active
+      // 3. One player is now disconnected
+      if (previousState.bothConnectedOnce && gameStatus === "active" && (!whiteConnected || !blackConnected)) {
+        // Check if this is a real disconnect (was connected before, now isn't)
+        const whiteDisconnected = previousState.whiteConnected && !whiteConnected;
+        const blackDisconnected = previousState.blackConnected && !blackConnected;
+        
+        console.log("Disconnect detected:", { whiteDisconnected, blackDisconnected, whiteConnected, blackConnected });
+        
+        if ((whiteDisconnected || blackDisconnected) && !disconnectTimerRef.current) {
+          // Real disconnect detected - start 30-second grace period
+          console.log("Starting 30-second disconnect grace period");
+          toast.warning("Opponent disconnected. Waiting for reconnection...", { duration: 5000 });
+          
+          disconnectTimerRef.current = setTimeout(() => {
+            // After 30 seconds, check if still disconnected
+            const currentState = connectionStateRef.current;
+            const stillDisconnected = !currentState.whiteConnected || !currentState.blackConnected;
+            
+            if (stillDisconnected && gameStatus === "active") {
+              console.log("30 seconds elapsed - processing game abandonment");
+              
+              const isCurrentPlayerWinner = 
+                (playerColorRef.current === "white" && currentState.whiteConnected) ||
+                (playerColorRef.current === "black" && currentState.blackConnected);
+              
+              setGameStatus("completed");
+              setClockMeta((prev) => ({ ...prev, isRunning: false }));
+              
+              // Set appropriate game result
+              if (isCurrentPlayerWinner) {
+                setGameResult({
+                  type: "win",
+                  message: `Opponent abandoned the game!`,
+                });
+              } else {
+                setGameResult({
+                  type: "loss",
+                  message: `You disconnected from the game.`,
+                });
+              }
+              
+              setIsResultModalOpen(true);
+            }
+            
+            disconnectTimerRef.current = null;
+          }, 30000);
+        }
+      }
+    });
+
     setSocket(newSocket);
 
     return () => {
       newSocket.disconnect();
       newSocket.off("connect");
       newSocket.off("connect_error");
+      newSocket.off("disconnect");
       newSocket.off("game-state");
       newSocket.off("clock-sync");
       newSocket.off("move-made");
@@ -697,7 +817,7 @@ export default function ChessPage() {
 
       setGameResult({
         type: isWinner ? "win" : "loss",
-        message: isWinner ? "You win on time!" : "You lost on time!",
+        message: isWinner ? "Opponent ran out of time." : "You ran out of time!",
       });
     };
 
@@ -1186,6 +1306,54 @@ export default function ChessPage() {
     setMoves(formatted);
   }
 
+  const totalHalfMoves = moves.reduce(
+  (total, move) =>
+    total + (move.white ? 1 : 0) + (move.black ? 1 : 0),
+  0
+ );
+
+useEffect(() => {
+  didInitialBackJump.current = false;
+  didFinalForwardJump.current = false;
+}, [moves]);
+ 
+function goPrevSmart() {
+  if (currentMoveIndex <= 0) return;
+
+  let target: number;
+
+  if (!didInitialBackJump.current && currentMoveIndex >= 2) {
+    // FIRST click only
+    target = currentMoveIndex - 2;
+    didInitialBackJump.current = true;
+  } else {
+    // Normal step
+    target = currentMoveIndex - 1;
+  }
+
+  goToMove(Math.max(0, target));
+}
+
+function goNextSmart() {
+  if (currentMoveIndex >= totalHalfMoves) return;
+
+  let target: number;
+  const remaining = totalHalfMoves - currentMoveIndex;
+
+  if (!didFinalForwardJump.current && remaining === 1) {
+    // LAST click only → jump to live
+    target = totalHalfMoves;
+    didFinalForwardJump.current = true;
+  } else {
+    // Normal step
+    target = currentMoveIndex + 1;
+  }
+
+  goToMove(Math.min(totalHalfMoves, target));
+}
+
+
+
   function goToMove(halfMoveIndex: number) {
     clearPremoves();
     setOptionSquares({});
@@ -1196,7 +1364,7 @@ export default function ChessPage() {
 
     // Special case: if navigating to the "live position" (after all moves)
     // This is when halfMoveIndex equals totalHalfMoves (one past the last move)
-    if (halfMoveIndex >= fullHistory.length) {
+    if (halfMoveIndex === fullHistory.length) {
       // Sync to the current live game state
       setChessPosition(chessGame.fen());
       setCurrentMoveIndex(fullHistory.length);
@@ -1230,34 +1398,6 @@ export default function ChessPage() {
     setCheckSquare(kingSquare);
   }
 
-  // Responsive board sizing
-  // useEffect(() => {
-  //   function computeBoardSize() {
-  //     if (typeof window === "undefined") return;
-
-  //     const width = window.innerWidth;
-  //     const height = window.innerHeight;
-
-  //     const isDesk = width >= 1024;
-  //     setIsDesktop(isDesk);
-
-  //     if (isDesk) {
-  //       const maxBoard = 540;
-  //       const availableWidth = Math.max(400, Math.min(width * 0.62, width - 520));
-  //       const availableHeight = Math.max(400, height - 200);
-  //       const size = Math.max(360, Math.min(maxBoard, Math.min(availableWidth, availableHeight)));
-  //       setBoardSize(Math.floor(size));
-  //     } else {
-  //       const mobileWidth = Math.min(width - 32, height - 160);
-  //       setBoardSize(Math.max(260, Math.floor(mobileWidth)));
-  //     }
-  //   }
-
-  //   computeBoardSize();
-  //   window.addEventListener("resize", computeBoardSize);
-  //   return () => window.removeEventListener("resize", computeBoardSize);
-  // }, []);
-
   useEffect(() => {
   function computeBoardSize() {
     if (typeof window === "undefined") return;
@@ -1265,7 +1405,7 @@ export default function ChessPage() {
     const width = window.innerWidth;
     const height = window.innerHeight;
 
-    // 🔥 Improved device detection
+    // Improved device detection
     const isLandscape = width > height * 1.2; 
     const isLargeWidth = width >= 1000;
 
@@ -1361,13 +1501,17 @@ export default function ChessPage() {
         clearTimeout(redirectTimerRef.current);
         redirectTimerRef.current = null;
       }
+      if (disconnectTimerRef.current) {
+        clearTimeout(disconnectTimerRef.current);
+        disconnectTimerRef.current = null;
+      }
     };
   }, []);
 
   return (
     <div className="h-full lg:h-screen lg:overflow-hidden w-full flex flex-col">
       {/* MOBILE HEADER */}
-      <div className="flex lg:hidden justify-between items-center pt-2 pb-3 px-4 border-white/10">
+      <div className="flex lg:hidden justify-between items-center pt-1 pb-3 px-4 border-white/10">
         <button onClick={() => router.replace("/")} className="text-2xl font-bold hover:text-primary transition-colors">
           Chess
         </button>
@@ -1380,7 +1524,7 @@ export default function ChessPage() {
       </div>
 
       {/* DESKTOP HEADER */}
-      <div className="hidden lg:flex justify-between items-center pt-2 pb-3 px-4 border-white/10 overflow-hidden">
+      <div className="hidden lg:flex justify-between items-center pt-1 pb-3 px-4 border-white/10 overflow-hidden">
         <button onClick={() => router.replace("/")} className="absolute top-4 left-4 text-2xl font-bold hover:text-primary transition-colors">
           Chess
         </button>
@@ -1389,13 +1533,13 @@ export default function ChessPage() {
       {/* MAIN LAYOUT */}
       <div
         ref={containerRef}
-        className="flex gap-6 justify-center items-center flex-col lg:flex-row px-3 lg:px-6 py-2 h-full"
+        className="flex gap-6 justify-center items-center flex-col lg:flex-row px-3 lg:px-6 py-4 h-full"
         style={isDesktop ? { minHeight: `${boardSize + 160}px` } : {}}
       >
         {/* LEFT: Board + player info */}
         <div className="flex flex-col items-center justify-between lg:flex-shrink-0 h-full">
           {/* Top player info */}
-            <div className="w-full flex items-center justify-between bg-white/2 rounded-lg p-2 backdrop-blur-xs">
+            <div className="w-full flex items-center justify-between bg-white/5 rounded-lg p-2 backdrop-blur-xs">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-full bg-zinc-700 flex items-center justify-center overflow-hidden">
                   <img
@@ -1440,7 +1584,7 @@ export default function ChessPage() {
 
 
           {/* Bottom Player Info - You */}
-          <div className="w-full flex items-center justify-between bg-white/2 rounded-lg p-2 backdrop-blur-xs">
+          <div className="w-full flex items-center justify-between bg-white/5 rounded-lg p-2 backdrop-blur-xs">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-full bg-zinc-700 flex items-center justify-center overflow-hidden">
                 <img
@@ -1495,14 +1639,14 @@ export default function ChessPage() {
             <button
               className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
               onClick={() => goToMove(-1)}
-              disabled={currentMoveIndex <= -1 || moves.length === 0}
+              disabled={currentMoveIndex === -1 || totalHalfMoves === 0}
               aria-label="Go to start"
             >
               ⏮
             </button>
             <button
               className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700  cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
-              onClick={() => goToMove(currentMoveIndex - 1)}
+              onClick={goPrevSmart}
               disabled={currentMoveIndex <= -1 || moves.length === 0}
               aria-label="Previous move"
             >
@@ -1510,16 +1654,16 @@ export default function ChessPage() {
             </button>
             <button
               className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
-              onClick={() => goToMove(currentMoveIndex + 1)}
-              disabled={currentMoveIndex >= moves.reduce((total, move) => total + (move.white ? 1 : 0) + (move.black ? 1 : 0), 0) || moves.length === 0}
+              onClick={goNextSmart}
+              disabled={currentMoveIndex >= totalHalfMoves || moves.length === 0}
               aria-label="Next move"
             >
               ▶
             </button>
             <button
               className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
-              onClick={() => goToMove(moves.reduce((total, move) => total + (move.white ? 1 : 0) + (move.black ? 1 : 0), 0))}
-              disabled={currentMoveIndex >= moves.reduce((total, move) => total + (move.white ? 1 : 0) + (move.black ? 1 : 0), 0) || moves.length === 0}
+              onClick={() => goToMove(totalHalfMoves)}
+              disabled={currentMoveIndex >= totalHalfMoves || moves.length === 0}
               aria-label="Go to end"
             >
               ⏭
@@ -1527,7 +1671,7 @@ export default function ChessPage() {
           </div>
 
           {/* Move History */}
-          <div className="bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden border border-white/10 flex-shrink-0">
+          <div className={`bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden border border-white/10 transition-all duration-300 ${ isDesktopChatOpen ? "flex-shrink-0" : "flex-1 min-h-0" }`}>
             <div className="bg-white/4 px-4 py-3">
               <div className="grid grid-cols-3 gap-4 text-base font-semibold">
                 <div>White</div>
@@ -1535,7 +1679,7 @@ export default function ChessPage() {
                 <div className="text-right">Black</div>
               </div>
             </div>
-            <div className="h-[180px] overflow-y-auto p-4" ref={moveRef}>
+            <div className={`overflow-y-auto p-4 ${ isDesktopChatOpen ? "h-[180px]" : "flex-1 min-h-0" }`} ref={moveRef}>
               {moves.length === 0 ? (
                 <p className="text-gray-500 text-center py-4 text-base">No moves yet</p>
               ) : (
@@ -1579,80 +1723,90 @@ export default function ChessPage() {
             </div>
           </div>
 
-          {/* Chat Panel*/}
-          <div className="hidden lg:flex bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden border border-white/10 flex-col flex-1 min-h-0">
-            <div className="bg-white/4 px-4 py-3 flex items-center justify-between flex-shrink-0">
+          {/* Chat Panel - Desktop Collapsible */}
+          <div className={`hidden lg:flex bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden border border-white/10 flex-col transition-all duration-300 ${
+            isDesktopChatOpen ? "flex-1 min-h-0" : "flex-shrink-0 h-12"
+          }`}>
+            <div className="bg-white/4 px-4 py-3 flex items-center justify-between flex-shrink-0 cursor-pointer hover:bg-white/5" 
+              onClick={() => setIsDesktopChatOpen(!isDesktopChatOpen)}>
               <h3 className="font-semibold text-base">Chat</h3>
+              <button className="text-lg transition-transform" title="Toggle chat">
+                {isDesktopChatOpen ? "−" : "+"}
+              </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 min-h-0" ref={chatRef}>
-              {chatMessages.length === 0 ? (
-                <div className="text-center text-gray-500 mt-8">
-                  <p className="text-base">No messages yet</p>
-                </div>
-              ) : (
-                chatMessages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.sender === "me" ? "justify-end" : "justify-start"} mb-2`}>
-                    <div className={`max-w-[75%] rounded-lg p-2 ${msg.sender === "me" ? "bg-slate-700 text-white rounded-br-none" : "bg-zinc-700 text-white rounded-bl-none"}`}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold">{msg.sender === "me" ? "You" : "Opponent"}</span>
-                        <span className="text-xs text-gray-400">
-                          {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                      <p className="text-base">{msg.message}</p>
+            {isDesktopChatOpen && (
+              <>
+                <div className="flex-1 overflow-y-auto p-4 min-h-0" ref={chatRef}>
+                  {chatMessages.length === 0 ? (
+                    <div className="text-center text-gray-500 mt-8">
+                      <p className="text-base">No messages yet</p>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
+                  ) : (
+                    chatMessages.map((msg) => (
+                      <div key={msg.id} className={`flex ${msg.sender === "me" ? "justify-end" : "justify-start"} mb-2`}>
+                        <div className={`max-w-[75%] rounded-lg p-2 ${msg.sender === "me" ? "bg-slate-700 text-white rounded-br-none" : "bg-zinc-700 text-white rounded-bl-none"}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-semibold">{msg.sender === "me" ? "You" : "Opponent"}</span>
+                            <span className="text-xs text-gray-400">
+                              {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <p className="text-base">{msg.message}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
 
-            <div className="p-4 border-t border-zinc-800 flex-shrink-0">
-              <div className="flex gap-2 items-center">
-                <input
-                  type="text"
-                  id="chatInputDesktop"
-                  placeholder="Chat with opponent. Start typing"
-                  className="flex-1 bg-zinc-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary text-base placeholder:text-gray-500"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && e.currentTarget.value.trim() && socket && getGameIdFromPath()) {
-                      const message = e.currentTarget.value.trim();
-                      const newMessage: Message = {
-                        id: `${Date.now()}-${Math.random()}`,
-                        sender: "me",
-                        message,
-                        timestamp: new Date(),
-                      };
-                      handleAddChatMessage(newMessage);
-                      socket.emit("chat-message", { gameId: getGameIdFromPath(), message });
-                      e.currentTarget.value = "";
-                    }
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    const input = document.getElementById("chatInputDesktop") as HTMLInputElement;
-                    if (input && input.value.trim() && socket && getGameIdFromPath()) {
-                      const message = input.value.trim();
-                      const newMessage: Message = {
-                        id: `${Date.now()}-${Math.random()}`,
-                        sender: "me",
-                        message,
-                        timestamp: new Date(),
-                      };
-                      handleAddChatMessage(newMessage);
-                      socket.emit("chat-message", { gameId: getGameIdFromPath(), message });
-                      input.value = "";
-                    }
-                  }}
-                  className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                  </svg>
-                </button>
-              </div>
-            </div>
+                <div className="p-4 border-t border-zinc-800 flex-shrink-0">
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      id="chatInputDesktop"
+                      placeholder="Chat with opponent. Start typing"
+                      className="flex-1 bg-zinc-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary text-base placeholder:text-gray-500"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && e.currentTarget.value.trim() && socket && getGameIdFromPath()) {
+                          const message = e.currentTarget.value.trim();
+                          const newMessage: Message = {
+                            id: `${Date.now()}-${Math.random()}`,
+                            sender: "me",
+                            message,
+                            timestamp: new Date(),
+                          };
+                          handleAddChatMessage(newMessage);
+                          socket.emit("chat-message", { gameId: getGameIdFromPath(), message });
+                          e.currentTarget.value = "";
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const input = document.getElementById("chatInputDesktop") as HTMLInputElement;
+                        if (input && input.value.trim() && socket && getGameIdFromPath()) {
+                          const message = input.value.trim();
+                          const newMessage: Message = {
+                            id: `${Date.now()}-${Math.random()}`,
+                            sender: "me",
+                            message,
+                            timestamp: new Date(),
+                          };
+                          handleAddChatMessage(newMessage);
+                          socket.emit("chat-message", { gameId: getGameIdFromPath(), message });
+                          input.value = "";
+                        }
+                      }}
+                      className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -1674,7 +1828,8 @@ export default function ChessPage() {
           message={gameResult.message}
           onClose={() =>{handleResultModalClose();
             redirectTimerRef.current = setTimeout(() => {
-                router.replace("/dashboard");
+                if(guestId) router.replace("/");
+                else router.replace("/dashboard");
               }, 5000);}
           }
           isGuest={!!guestId}
@@ -1705,7 +1860,7 @@ export default function ChessPage() {
       <ConfirmDialog
         isOpen={showLeaveConfirm}
         title="Leave Active Game?"
-        message="You have an active game in progress. If you leave now without resigning, you may be penalized. Would you like to resign and leave?"
+        message="You have an active game in progress. Leaving an active game counts as a resignation. Would you like to resign and leave?"
         confirmText="Resign and Leave"
         cancelText="Stay in Game"
         confirmVariant="destructive"
