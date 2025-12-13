@@ -256,7 +256,9 @@ function PlayPageContent() {
       {/* Top bar */}
       <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
         <div className="flex items-center gap-3">
-          <span className="text-2xl font-bold">Chess</span>
+          <button onClick={() => router.push("/")} className="text-2xl font-bold hover:text-primary transition-colors">
+            Chess
+          </button>
         </div>
         <div className="flex items-center gap-3">
           <button

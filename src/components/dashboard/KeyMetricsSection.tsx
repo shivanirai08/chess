@@ -53,10 +53,10 @@ export function KeyMetricsSection({
             size={80}
             className={`${ type === "win" ? "text-green-500" : type === "loss" ? "text-red-500" : "text-gray-500" }  opacity-30 sm:opacity-50 absolute -top-0 -left-2 -z-1`}
           />
-          <span className="text-4xl font-bold">{currentStreak}</span>
+          <span className="text-4xl font-bold">{longestStreak}</span>
           <span className="text-xs text-gray-200 sm:text-sm">
             {/* Longest: {longestStreak} */}
-            {type ? `${type.charAt(0).toUpperCase() + type.slice(1)} Streak` : 'Streak'}
+            {type ? `Longest ${type.charAt(0).toUpperCase() + type.slice(1)} Streak` : 'Longest Streak'}
           </span>
         </div>
       </div>

@@ -99,10 +99,10 @@ export default function OTPpage() {
           });
           if (res.data.token) {
           Cookies.set("auth-token", res.data.token, {
-              path: "/", // accessible throughout the site
-              expires: 7, // cookie will live for 7 days
-              sameSite: "lax", // protects against CSRF
-              secure: process.env.NODE_ENV === "production", // only send cookie over HTTPS in production
+              path: "/",
+              expires: 1, // 1 day to match backend JWT expiration (24h)
+              sameSite: "lax",
+              secure: process.env.NODE_ENV === "production",
             });
           }
         }

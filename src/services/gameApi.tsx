@@ -1,11 +1,35 @@
 import Cookies from "js-cookie";
 import { toast } from "sonner";
 
+// Decode JWT to check expiration without verifying signature (client-side check)
+const isTokenExpired = (token: string): boolean => {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    const exp = payload.exp * 1000; // Convert to milliseconds
+    return Date.now() >= exp;
+  } catch {
+    return true; 
+  }
+};
+
 // Get authentication token from cookies
 export const getToken = () => {
   if (typeof window === "undefined") return null;
   try {
-    return Cookies.get("auth-token") || null;
+    const token = Cookies.get("auth-token");
+    if (!token) return null;
+    
+    // Check if token is expired
+    if (isTokenExpired(token)) {
+      Cookies.remove("auth-token");
+      toast.error("Session expired. Please log in again.");
+      if (window.location.pathname !== "/") {
+        window.location.href = "/";
+      }
+      return null;
+    }
+    
+    return token;
   } catch {
     return null;
   }

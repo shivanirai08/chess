@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, use } from "react";
 import { Chess, Square, PieceSymbol } from "chess.js";
 import {
   Chessboard,
@@ -10,6 +10,7 @@ import {
 } from "react-chessboard";
 import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { useUserStore } from "@/store/useUserStore";
 import GameResultModal from "@/components/ui/GameResultModal";
 import ChatPanel, { Message } from "@/components/ui/ChatPanel";
@@ -36,6 +37,7 @@ import {
 
 // Utils
 import { getRandomAvatar, getAvatarUrl } from "@/utils/avatar";
+import Button from "@/components/ui/Button";
 
 type GameClockState = {
   whiteTimeRemaining: number;
@@ -68,6 +70,7 @@ type ClockMetaState = {
 };
 
 export default function ChessPage() {
+  const router = useRouter();
   const { setUser, user, opponent, setOpponent } = useUserStore();
   const userId = user.id; // Extract user ID once
   const guestId = user.guestId;
@@ -85,6 +88,10 @@ export default function ChessPage() {
   const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
   const playerColorRef = useRef<"white" | "black">("white");
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
+  const chatRef = useRef<HTMLDivElement | null>(null);
+  const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const moveRef = useRef<HTMLDivElement | null>(null);
+  const disconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Timer states
   const [whiteTime, setWhiteTime] = useState<number>(600);
@@ -106,11 +113,15 @@ export default function ChessPage() {
   const [ratingChange, setRatingChange] = useState<RatingDelta | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  const [isDesktopChatOpen, setIsDesktopChatOpen] = useState(true);
+  const [timeControlDisplay, setTimeControlDisplay] = useState<string>("Blitz • 3 min");
 
   // Dialog states
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [showDrawOffer, setShowDrawOffer] = useState(false);
   const [isDrawOffering, setIsDrawOffering] = useState(false); // true if we sent the offer
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null);
 
   // Game setup
   // Game state management
@@ -121,9 +132,24 @@ export default function ChessPage() {
   const [moveFrom, setMoveFrom] = useState("");
   const [optionSquares, setOptionSquares] = useState<Record<string, React.CSSProperties>>({});
   const [checkSquare, setCheckSquare] = useState<string | null>(null);
-  const [boardSize, setBoardSize] = useState(400);
+
+  // Jump management
+  const didInitialBackJump = useRef(false);
+  const didFinalForwardJump = useRef(false);
+
+  // Board size state (controlled)
+  const [boardSize, setBoardSize] = useState<number>(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const [promotionMove, setPromotionMove] = useState<{ from: Square; to: Square } | null>(null);
   const [isPremovePromotion, setIsPremovePromotion] = useState(false);
+  
+  // Track connection states to detect real disconnections vs initial connection delays
+  const connectionStateRef = useRef({ 
+    whiteConnected: false, 
+    blackConnected: false,
+    bothConnectedOnce: false // Track if both were ever connected
+  });
 
   // Premove management via custom hook
   const {
@@ -183,6 +209,7 @@ export default function ChessPage() {
     }
   };
 
+
   // Fetch initial game state
   useEffect(() => {
     const gameId = getGameIdFromPath();
@@ -198,23 +225,13 @@ export default function ChessPage() {
         const blackId = String(game.blackPlayerId).trim();
         const currentId = String(playerId).trim();
 
-        console.log('=== Player Color Determination ===');
-        console.log('White Player ID:', whiteId);
-        console.log('Black Player ID:', blackId);
-        console.log('Current Player ID:', currentId);
-        console.log('Is Guest:', !!guestId);
-
         if (whiteId === currentId) {
-          console.log('Setting player as WHITE');
           setPlayerColor("white");
           setBoardOrientation("white");
         } else if (blackId === currentId) {
-          console.log('Setting player as BLACK');
           setPlayerColor("black");
           setBoardOrientation("black");
         } else {
-          console.error('ERROR: Player ID does not match white or black player!');
-          console.error('This should not happen. Defaulting to white.');
           setPlayerColor("white");
           setBoardOrientation("white");
         }
@@ -239,6 +256,10 @@ export default function ChessPage() {
           // Update position and moves display
           setChessPosition(chessGame.fen());
           updateMovesFromHistory();
+          
+          // If game has moves, both players were connected at some point
+          // Set flag to enable disconnect detection even after page reload
+          connectionStateRef.current.bothConnectedOnce = true;
         } else if (game.fen) {
           // Fallback: load FEN directly if no moves array
           try {
@@ -256,6 +277,26 @@ export default function ChessPage() {
 
         // Set game status
         setGameStatus(game.status);
+
+        // Set time control display
+        if (game.initialTimeSeconds) {
+          const minutes = Math.floor(game.initialTimeSeconds / 60);
+          const increment = game.incrementSeconds || 0;
+          let category = "";
+          
+          // Determine time control category based on initial time
+          if (game.initialTimeSeconds < 180) {
+            category = "Bullet";
+          } else if (game.initialTimeSeconds < 600) {
+            category = "Blitz";
+          } else if (game.initialTimeSeconds <= 1800) {
+            category = "Rapid";
+          } else {
+            category = "Classical";
+          }
+          
+          setTimeControlDisplay(`${category} • ${minutes}${increment > 0 ? `+${increment}` : ''} min`);
+        }
 
         // Set opponent data
         if (game.whitePlayerName && game.blackPlayerName) {
@@ -324,17 +365,22 @@ export default function ChessPage() {
       newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
       auth: { token },
       transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
     });}
     else {
       newSocket = io(`${process.env.NEXT_PUBLIC_WEBSOCKET_URL}`, {
       auth: { guestId : guestId },
       transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
     });}
 
     newSocket.on("connect", () => {
-      console.log('Socket connected, joining game:', gameId);
-      console.log('Player ID:', playerId);
-      console.log('Is Guest:', !!guestId);
       newSocket.emit("join-game", gameId);
     });
 
@@ -343,8 +389,11 @@ export default function ChessPage() {
       toast.error(`Connection error: ${err.message}`);
     });
 
+    newSocket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
+    });
+
     newSocket.on("game-state", (data) => {
-      console.log('Received game-state event:', data);
       if (data?.fen) {
         chessGame.load(data.fen);
         setChessPosition(chessGame.fen());
@@ -365,16 +414,9 @@ export default function ChessPage() {
     });
 
     newSocket.on("move-made", (data) => {
-      console.log('Received move-made event:', data);
-      console.log('Current username:', username);
-      console.log('Current guestId:', guestId);
-      console.log('Move from player:', data?.player);
-
       if(data?.player === username || data?.player === guestId) {
-        console.log('Ignoring own move');
         return;
       }
-      console.log('Applying opponent move');
       try {
         // Apply opponent's move to actual board
         if (data?.move) {
@@ -430,22 +472,33 @@ export default function ChessPage() {
       if (data?.result) {
         const isWinner = data.winner?.userId === playerId;
         let message = "";
+        let resultType: "win" | "loss" | "draw" | "abandoned" = "draw";
 
-        if (data.reason === "TIMEOUT") {
-          message = isWinner ? "You win on time!" : "You lost on time!";
+        if (data.reason === "ABANDONED") {
+          resultType = "abandoned";
+          message = isWinner 
+            ? "Opponent abandoned the game." 
+            : "You abandoned the game.";
+        } else if (data.reason === "TIMEOUT") {
+          resultType = isWinner ? "win" : "loss";
+          message = isWinner ? "Opponent ran out of time." : "You ran out of time!";
         } else if (data.reason === "CHECKMATE") {
+          resultType = isWinner ? "win" : "loss";
           message = isWinner ? "Checkmate! You win!" : "Checkmate! You lose!";
         } else if (data.reason === "RESIGNATION") {
+          resultType = isWinner ? "win" : "loss";
           message = isWinner ? "Opponent resigned! You win!" : "You resigned";
         } else if (data.reason?.startsWith("DRAW")) {
+          resultType = "draw";
           message = "The game ended in a draw.";
         } else {
+          resultType = data.result === "draw" ? "draw" : (isWinner ? "win" : "loss");
           message = data.result === "draw" ? "The game ended in a draw." : 
                     (isWinner ? "You win!" : "You lose!");
         }
 
         setGameResult({
-          type: data.result === "draw" ? "draw" : (isWinner ? "win" : "loss"),
+          type: resultType,
           message
         });
       }
@@ -498,10 +551,6 @@ export default function ChessPage() {
       setIsResultModalOpen(true);
     });
 
-    newSocket.on("players-connected", (data) => {
-      console.log("Players connected:", data);
-    });
-
     newSocket.on("error", (err) => {
       console.error("Socket error:", err);
       toast.error(err.message || "Server error occurred");
@@ -522,8 +571,8 @@ export default function ChessPage() {
         };
         handleAddChatMessage(newMessage);
 
-        // Show toast notification if chat is closed
-        if (!isChatOpen) {
+        // Show toast notification if chat is closed (mobile or desktop)
+        if (!isChatOpen || !isDesktopChatOpen) {
           toast.info(`${opponent?.username || "Opponent"}: ${data.message}`, {
             duration: 3000,
           });
@@ -566,12 +615,96 @@ export default function ChessPage() {
       setIsDrawOffering(false);
     });
 
+    newSocket.on("players-connected", (data) => {
+      console.log("Players connected:", data);
+      
+      const whiteConnected = data?.whiteConnected;
+      const blackConnected = data?.blackConnected;
+      // Create a COPY of previous state (not a reference)
+      const previousState = { ...connectionStateRef.current };
+      
+      // Update the tracked connection state
+      connectionStateRef.current.whiteConnected = whiteConnected;
+      connectionStateRef.current.blackConnected = blackConnected;
+      
+      // Check if both players are now connected (first time)
+      if (whiteConnected && blackConnected && !previousState.bothConnectedOnce) {
+        connectionStateRef.current.bothConnectedOnce = true;
+        console.log("Both players connected for the first time");
+        return; // Don't process as disconnect, just mark as both connected
+      }
+      
+      // If both players reconnected, clear any pending disconnect timer
+      if (whiteConnected && blackConnected && previousState.bothConnectedOnce) {
+        if (disconnectTimerRef.current) {
+          console.log("Both players reconnected - canceling disconnect timer");
+          clearTimeout(disconnectTimerRef.current);
+          disconnectTimerRef.current = null;
+          toast.success("Opponent reconnected!");
+        }
+        return;
+      }
+      
+      // Only process as potential abandonment if:
+      // 1. Both players were previously connected
+      // 2. Game is still active
+      // 3. One player is now disconnected
+      if (previousState.bothConnectedOnce && gameStatus === "active" && (!whiteConnected || !blackConnected)) {
+        // Check if this is a real disconnect (was connected before, now isn't)
+        const whiteDisconnected = previousState.whiteConnected && !whiteConnected;
+        const blackDisconnected = previousState.blackConnected && !blackConnected;
+        
+        console.log("Disconnect detected:", { whiteDisconnected, blackDisconnected, whiteConnected, blackConnected });
+        
+        if ((whiteDisconnected || blackDisconnected) && !disconnectTimerRef.current) {
+          // Real disconnect detected - start 30-second grace period
+          console.log("Starting 30-second disconnect grace period");
+          toast.warning("Opponent disconnected. Waiting for reconnection...", { duration: 5000 });
+          
+          disconnectTimerRef.current = setTimeout(() => {
+            // After 30 seconds, check if still disconnected
+            const currentState = connectionStateRef.current;
+            const stillDisconnected = !currentState.whiteConnected || !currentState.blackConnected;
+            
+            if (stillDisconnected && gameStatus === "active") {
+              console.log("30 seconds elapsed - processing game abandonment");
+              
+              const isCurrentPlayerWinner = 
+                (playerColorRef.current === "white" && currentState.whiteConnected) ||
+                (playerColorRef.current === "black" && currentState.blackConnected);
+              
+              setGameStatus("completed");
+              setClockMeta((prev) => ({ ...prev, isRunning: false }));
+              
+              // Set appropriate game result
+              if (isCurrentPlayerWinner) {
+                setGameResult({
+                  type: "win",
+                  message: `Opponent abandoned the game!`,
+                });
+              } else {
+                setGameResult({
+                  type: "loss",
+                  message: `You disconnected from the game.`,
+                });
+              }
+              
+              setIsResultModalOpen(true);
+            }
+            
+            disconnectTimerRef.current = null;
+          }, 30000);
+        }
+      }
+    });
+
     setSocket(newSocket);
 
     return () => {
       newSocket.disconnect();
       newSocket.off("connect");
       newSocket.off("connect_error");
+      newSocket.off("disconnect");
       newSocket.off("game-state");
       newSocket.off("clock-sync");
       newSocket.off("move-made");
@@ -585,29 +718,6 @@ export default function ChessPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId, username]);
 
-  // Resize board dynamically
-  useEffect(() => {
-    function updateSize() {
-      if (typeof window === "undefined") return;
-      setIsDesktop(window.innerWidth >= 1024);
-      const width = window.innerWidth - 16;
-
-      if (window.innerWidth <= 700) {
-        setBoardSize(width);
-      } else if( window.innerWidth <= 1024){
-        
-      }
-      else{
-        const height = window.innerHeight - 90;
-        const width = window.innerWidth - 40;
-        setBoardSize(Math.min(height, width));
-      }
-    }
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
-  }, []);
-
   useEffect(() => {
     // When moves update, set currentMoveIndex to the live position
     // Live position = total number of half-moves (one past the last move)
@@ -620,6 +730,78 @@ export default function ChessPage() {
     if (gameStatus !== "completed") return;
     setClockMeta((prev) => (prev.isRunning ? { ...prev, isRunning: false } : prev));
   }, [gameStatus]);
+
+  // Prevent leaving active game
+  useEffect(() => {
+    const isGameActive = gameStatus === "active";
+    
+    if (!isGameActive) return;
+
+    const currentPath = window.location.pathname;
+    let isNavigatingAway = false;
+
+    // Handle browser close/refresh
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "You have an active game. Leaving will result in a loss. Are you sure?";
+      return e.returnValue;
+    };
+
+    // Handle browser back/forward button
+    const handlePopState = (e: PopStateEvent) => {
+      if (isNavigatingAway) return;
+      
+      // User pressed back/forward, but we want to stay and show modal
+      e.preventDefault();
+      
+      // Push current state back to history to cancel the navigation
+      window.history.pushState(null, '', currentPath);
+      
+      // Show the modal to ask user
+      setPendingNavigation(() => () => {
+        isNavigatingAway = true;
+        window.history.back();
+      });
+      setShowLeaveConfirm(true);
+    };
+
+    // Push initial state to enable popstate detection
+    window.history.pushState(null, '', currentPath);
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("popstate", handlePopState);
+    
+    // Intercept all link clicks to show modal
+    const handleLinkClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const link = target.closest('a[href]');
+      const button = target.closest('button');
+      
+      // Check if clicking a navigation link or button that might navigate
+      if (link || (button && (button.textContent?.includes('Dashboard') || button.textContent?.includes('Back')))) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Store the navigation action
+        if (link) {
+          const href = link.getAttribute('href');
+          setPendingNavigation(() => () => router.replace(href || '/dashboard'));
+        } else {
+          setPendingNavigation(() => () => router.replace('/dashboard'));
+        }
+        
+        setShowLeaveConfirm(true);
+      }
+    };
+
+    document.addEventListener('click', handleLinkClick, true);
+    
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState);
+      document.removeEventListener('click', handleLinkClick, true);
+    };
+  }, [gameStatus, router]);
 
   // Clock ticking effect with timeout detection
   useEffect(() => {
@@ -635,7 +817,7 @@ export default function ChessPage() {
 
       setGameResult({
         type: isWinner ? "win" : "loss",
-        message: isWinner ? "You win on time!" : "You lost on time!",
+        message: isWinner ? "Opponent ran out of time." : "You ran out of time!",
       });
     };
 
@@ -733,8 +915,7 @@ export default function ChessPage() {
     });
   };
 
-  // Move handling
-  // Get move options
+  // Move handling Get move options
   function getMoveOptions(square: Square) {
     const moves = chessGame.moves({ square, verbose: true });
     if (moves.length === 0) {
@@ -832,13 +1013,11 @@ export default function ChessPage() {
       const moveResult = chessGame.move(moveData);
 
       if (moveResult) {
-        // Move was successful, update UI
         setChessPosition(chessGame.fen());
         updateMovesFromHistory();
 
         const gameId = getGameIdFromPath();
         if (gameId && socket) {
-          // Use WebSocket only for real-time updates
           socket.emit("make-move", { gameId, move: moveData });
         }
         advanceLocalClockAfterMove(playerColorRef.current);
@@ -868,7 +1047,6 @@ export default function ChessPage() {
     
     const fullHistory = chessGame.history();
     if (currentMoveIndex < fullHistory.length) {
-      // Remove: toast.info("Return to current position to make moves");
       return false;
     }
 
@@ -933,7 +1111,6 @@ export default function ChessPage() {
       const moveResult = chessGame.move(moveData);
 
       if (moveResult) {
-        // Move was successful
         setChessPosition(chessGame.fen());
         updateMovesFromHistory();
 
@@ -1013,6 +1190,15 @@ export default function ChessPage() {
 
   function handleResign() {
     setShowResignConfirm(true);
+  }
+
+  async function executeResignAndLeave() {
+    await executeResign();
+    setShowLeaveConfirm(false);
+    if (pendingNavigation) {
+      pendingNavigation();
+      setPendingNavigation(null);
+    }
   }
 
   async function executeResign() {
@@ -1120,6 +1306,54 @@ export default function ChessPage() {
     setMoves(formatted);
   }
 
+  const totalHalfMoves = moves.reduce(
+  (total, move) =>
+    total + (move.white ? 1 : 0) + (move.black ? 1 : 0),
+  0
+ );
+
+useEffect(() => {
+  didInitialBackJump.current = false;
+  didFinalForwardJump.current = false;
+}, [moves]);
+ 
+function goPrevSmart() {
+  if (currentMoveIndex <= 0) return;
+
+  let target: number;
+
+  if (!didInitialBackJump.current && currentMoveIndex >= 2) {
+    // FIRST click only
+    target = currentMoveIndex - 2;
+    didInitialBackJump.current = true;
+  } else {
+    // Normal step
+    target = currentMoveIndex - 1;
+  }
+
+  goToMove(Math.max(0, target));
+}
+
+function goNextSmart() {
+  if (currentMoveIndex >= totalHalfMoves) return;
+
+  let target: number;
+  const remaining = totalHalfMoves - currentMoveIndex;
+
+  if (!didFinalForwardJump.current && remaining === 1) {
+    // LAST click only → jump to live
+    target = totalHalfMoves;
+    didFinalForwardJump.current = true;
+  } else {
+    // Normal step
+    target = currentMoveIndex + 1;
+  }
+
+  goToMove(Math.min(totalHalfMoves, target));
+}
+
+
+
   function goToMove(halfMoveIndex: number) {
     clearPremoves();
     setOptionSquares({});
@@ -1130,7 +1364,7 @@ export default function ChessPage() {
 
     // Special case: if navigating to the "live position" (after all moves)
     // This is when halfMoveIndex equals totalHalfMoves (one past the last move)
-    if (halfMoveIndex >= fullHistory.length) {
+    if (halfMoveIndex === fullHistory.length) {
       // Sync to the current live game state
       setChessPosition(chessGame.fen());
       setCurrentMoveIndex(fullHistory.length);
@@ -1164,6 +1398,47 @@ export default function ChessPage() {
     setCheckSquare(kingSquare);
   }
 
+  useEffect(() => {
+  function computeBoardSize() {
+    if (typeof window === "undefined") return;
+
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    // Improved device detection
+    const isLandscape = width > height * 1.2; 
+    const isLargeWidth = width >= 1000;
+
+    const isDeskView = isLandscape || isLargeWidth;
+    setIsDesktop(isDeskView);
+
+    if (isDeskView) {
+      // DESKTOP / LANDSCAPE BEHAVIOR
+      const maxBoard = 540;
+
+      // ensure board is not taller than viewport minus UI
+      const availableHeight = Math.max(400, height - 180);
+
+      // ensure board does not overflow sidebar + padding
+      const availableWidth = Math.max(380, width - 520);
+
+      const size = Math.min(maxBoard, availableHeight, availableWidth);
+
+      setBoardSize(Math.floor(size));
+    } 
+    else {
+      // MOBILE / PORTRAIT
+      const mobileWidth = Math.min(width - 32, height - 140);
+      setBoardSize(Math.max(240, Math.floor(mobileWidth)));
+    }
+  }
+
+  computeBoardSize();
+  window.addEventListener("resize", computeBoardSize);
+  return () => window.removeEventListener("resize", computeBoardSize);
+}, []);
+
+
   // Board styling and configuration
   const { chessboardOptions } = useBoardStyling({
     optionSquares,
@@ -1179,7 +1454,7 @@ export default function ChessPage() {
     onSquareClick,
     onSquareRightClick,
     canDragPiece,
-    checkSquare, // Add this prop
+    checkSquare,
   });
 
   // Determine whose turn it is
@@ -1203,11 +1478,43 @@ export default function ChessPage() {
     playerColorRef.current = playerColor;
   }, [playerColor]);
 
+  useEffect(() => {
+    if (chatRef.current) {
+      setTimeout(() => {
+        chatRef.current?.scrollTo({
+          top: chatRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 0);
+    }
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (moveRef.current) {
+      moveRef.current.scrollTop = moveRef.current.scrollHeight;
+    }
+  }, [moves, currentMoveIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+        redirectTimerRef.current = null;
+      }
+      if (disconnectTimerRef.current) {
+        clearTimeout(disconnectTimerRef.current);
+        disconnectTimerRef.current = null;
+      }
+    };
+  }, []);
+
   return (
-    <div className="h-full lg:h-screen w-full flex flex-col">
-      {/* HEADER */}
-      <div className="flex justify-between items-center pt-2 pb-3 px-4 border-white/10">
-        <h1 className="text-2xl font-bold">Chess</h1>
+    <div className="h-full lg:h-screen lg:overflow-hidden w-full flex flex-col">
+      {/* MOBILE HEADER */}
+      <div className="flex lg:hidden justify-between items-center pt-1 pb-3 px-4 border-white/10">
+        <button onClick={() => router.replace("/")} className="text-2xl font-bold hover:text-primary transition-colors">
+          Chess
+        </button>
         <GameControls
           onChatToggle={() => setIsChatOpen(!isChatOpen)}
           onDrawOffer={handleDrawOffer}
@@ -1216,46 +1523,294 @@ export default function ChessPage() {
         />
       </div>
 
-      <div
-        className="flex gap-2 justify-center items-start flex-col lg:flex-row relative"
-        style={isDesktop ? { height: `${boardSize}px` } : {}}
-      >
-        {/* LEFT: CHESSBOARD */}
-        <div className="relative flex justify-center items-center w-full lg:w-auto h-full">
-          {(promotionMove || (isPremovePromotion && pendingPromotionPremove)) && (
-            <PromotionDialog onSelect={handlePromotion} />
-          )}
-          <Chessboard options={chessboardOptions} />
-        </div>
-
-        {/* RIGHT: SIDEBAR */}
-        <div className="w-full lg:w-1/3 flex flex-col justify-between h-full px-4 lg:pb-4">
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center p-1 sm:p-3 rounded-lg">
-              <PlayerInfo
-                username={username || "You"}
-                avatar={user?.avatar ?? "/avatar7.svg"}
-                isCurrentPlayer
-                isMyTurn={isMyTurn}
-                timeRemaining={formatTime(playerColor === "white" ? whiteTime : blackTime)}
-              />
-              <div className="flex justify-center text-gray-400">vs</div>
-              <PlayerInfo
-                username={opponent?.username || "Opponent"}
-                avatar={opponent?.avatar || "/avatar8.svg"}
-                isMyTurn={!isMyTurn}
-                timeRemaining={formatTime(playerColor === "white" ? blackTime : whiteTime)}
-              />
-            </div>
-            <MoveHistory
-              moves={moves}
-              currentMoveIndex={currentMoveIndex}
-              onNavigate={goToMove}
-            />
-          </div>
-        </div>
+      {/* DESKTOP HEADER */}
+      <div className="hidden lg:flex justify-between items-center pt-1 pb-3 px-4 border-white/10 overflow-hidden">
+        <button onClick={() => router.replace("/")} className="absolute top-4 left-4 text-2xl font-bold hover:text-primary transition-colors">
+          Chess
+        </button>
       </div>
 
+      {/* MAIN LAYOUT */}
+      <div
+        ref={containerRef}
+        className="flex gap-6 justify-center items-center flex-col lg:flex-row px-3 lg:px-6 py-4 h-full"
+        style={isDesktop ? { minHeight: `${boardSize + 160}px` } : {}}
+      >
+        {/* LEFT: Board + player info */}
+        <div className="flex flex-col items-center justify-between lg:flex-shrink-0 h-full">
+          {/* Top player info */}
+            <div className="w-full flex items-center justify-between bg-white/5 rounded-lg p-2 backdrop-blur-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full bg-zinc-700 flex items-center justify-center overflow-hidden">
+                  <img
+                    src={opponent?.avatar || "/avatar8.svg"}
+                    alt="opponent"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <span className="text-base font-medium">
+                  {opponent?.username || "Opponent"}
+                </span>
+              </div>
+              <span className={`text-lg font-mono px-3 py-1.5 rounded transition-all duration-300 ${
+                !isMyTurn ? "bg-primary text-black font-bold shadow-lg animate-pulse" : "bg-zinc-800"
+              }`}>
+                {formatTime(playerColor === "white" ? blackTime : whiteTime)}
+              </span>
+            </div>
+
+          {/* Chessboard container: only render board when we have a positive boardSize */}
+          <div
+            className="flex items-center justify-center bg-transparent"
+            style={{
+              width: isDesktop ? `${boardSize}px` : "100%",
+              height: isDesktop ? `${boardSize}px` : `${boardSize}px`,
+              minWidth: isDesktop ? `${boardSize}px` : undefined,
+            }}
+          >
+            {(promotionMove || (isPremovePromotion && pendingPromotionPremove)) && (
+              <PromotionDialog onSelect={handlePromotion} />
+            )}
+
+            {/* Render Chessboard only when boardSize > 0 to avoid "Square width not found" */}
+            {boardSize > 0 && (
+              <div style={{ width: isDesktop ? boardSize : "100%", height: isDesktop ? boardSize : boardSize }}
+                className="flex items-center justify-center">
+                {/* Key ensures react-chessboard recalculates layout when boardSize changes */}
+                <Chessboard key={boardSize} options={chessboardOptions} />
+              </div>
+            )}
+          </div>
+
+
+          {/* Bottom Player Info - You */}
+          <div className="w-full flex items-center justify-between bg-white/5 rounded-lg p-2 backdrop-blur-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full bg-zinc-700 flex items-center justify-center overflow-hidden">
+                <img
+                  src={user?.avatar ?? "/avatar7.svg"}
+                  alt="you"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <span className="text-base font-medium">
+                {username || "You"}
+                <span className="text-gray-400 text-sm ml-1">(you)</span>
+              </span>
+            </div>
+            <span className={`text-lg font-mono px-3 py-1.5 rounded transition-all duration-300 ${
+              isMyTurn
+                ? "bg-primary text-black font-bold shadow-lg animate-pulse"
+                : "bg-zinc-800"
+            }`}>
+              {formatTime(playerColor === "white" ? whiteTime : blackTime)}
+            </span>
+          </div>
+        </div>
+
+        {/* RIGHT SECTION - Controls + Move History + Chat */}
+        <div className="w-full lg:w-[520px] flex flex-col gap-4 h-full">
+          {/* Top Controls Row */}
+          <div className="hidden lg:flex items-center gap-24 flex-shrink-0">
+            <span className="text-lg text-gray-200">
+              {timeControlDisplay}
+            </span>
+            <div className="flex flex-1 gap-2 ">
+              <Button
+                onClick={handleDrawOffer}
+                size="small"
+                variant="secondary"
+              >
+                Offer Draw
+              </Button>
+              <Button
+                onClick={handleResign}
+                disabled={gameStatus === "completed"}
+                size="small"
+                variant="destructive"
+              >
+                Resign
+              </Button>
+            </div>
+          </div>
+
+          {/* Navigation Controls */}
+          <div className={`flex gap-2 flex-shrink-0 ${isDesktop ? "justify-center lg:justify-start" : "fixed bottom-4 z-10 border border-white/10 backdrop-blur-xs rounded-lg py-2 px-4 left-1/2 transform -translate-x-1/2"}`}>
+            <button
+              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
+              onClick={() => goToMove(-1)}
+              disabled={currentMoveIndex === -1 || totalHalfMoves === 0}
+              aria-label="Go to start"
+            >
+              ⏮
+            </button>
+            <button
+              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700  cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
+              onClick={goPrevSmart}
+              disabled={currentMoveIndex <= -1 || moves.length === 0}
+              aria-label="Previous move"
+            >
+              ◀
+            </button>
+            <button
+              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
+              onClick={goNextSmart}
+              disabled={currentMoveIndex >= totalHalfMoves || moves.length === 0}
+              aria-label="Next move"
+            >
+              ▶
+            </button>
+            <button
+              className="w-14 h-12 bg-zinc-800 hover:bg-zinc-700 cursor-pointer text-white text-xl rounded-lg disabled:opacity-40 transition-colors flex items-center justify-center"
+              onClick={() => goToMove(totalHalfMoves)}
+              disabled={currentMoveIndex >= totalHalfMoves || moves.length === 0}
+              aria-label="Go to end"
+            >
+              ⏭
+            </button>
+          </div>
+
+          {/* Move History */}
+          <div className={`bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden border border-white/10 transition-all duration-300 ${ isDesktopChatOpen ? "flex-shrink-0" : "flex-1 min-h-0" }`}>
+            <div className="bg-white/4 px-4 py-3">
+              <div className="grid grid-cols-3 gap-4 text-base font-semibold">
+                <div>White</div>
+                <div className="text-center">Move</div>
+                <div className="text-right">Black</div>
+              </div>
+            </div>
+            <div className={`overflow-y-auto p-4 ${ isDesktopChatOpen ? "h-[180px]" : "flex-1 min-h-0" }`} ref={moveRef}>
+              {moves.length === 0 ? (
+                <p className="text-gray-500 text-center py-4 text-base">No moves yet</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {moves.map((row, idx) => {
+                    const highlightedMove = Math.floor(currentMoveIndex / 2);
+                    const highlightedSide = currentMoveIndex % 2 === 0 ? "white" : "black";
+                    return (
+                      <div
+                        key={row.moveNumber}
+                        className="grid grid-cols-3 gap-4 text-base"
+                      >
+                        <div
+                          className={`px-3 py-2 rounded cursor-pointer hover:bg-zinc-700 transition-colors ${
+                            idx === highlightedMove && highlightedSide === "white"
+                              ? "bg-zinc-800 text-white font-bold"
+                              : ""
+                          }`}
+                          onClick={() => goToMove(idx * 2)}
+                        >
+                          {row.white}
+                        </div>
+                        <div className="text-center text-gray-400 px-3 py-2">
+                          {row.moveNumber}
+                        </div>
+                        <div
+                          className={`px-3 py-2 rounded cursor-pointer text-right hover:bg-zinc-700 transition-colors ${
+                            idx === highlightedMove && highlightedSide === "black"
+                              ? "bg-zinc-800 text-white font-bold"
+                              : ""
+                          }`}
+                          onClick={() => row.black && goToMove(idx * 2 + 1)}
+                        >
+                          {row.black}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Chat Panel - Desktop Collapsible */}
+          <div className={`hidden lg:flex bg-white/2 rounded-lg backdrop-blur-xs overflow-hidden border border-white/10 flex-col transition-all duration-300 ${
+            isDesktopChatOpen ? "flex-1 min-h-0" : "flex-shrink-0 h-12"
+          }`}>
+            <div className="bg-white/4 px-4 py-3 flex items-center justify-between flex-shrink-0 cursor-pointer hover:bg-white/5" 
+              onClick={() => setIsDesktopChatOpen(!isDesktopChatOpen)}>
+              <h3 className="font-semibold text-base">Chat</h3>
+              <button className="text-lg transition-transform" title="Toggle chat">
+                {isDesktopChatOpen ? "−" : "+"}
+              </button>
+            </div>
+            {isDesktopChatOpen && (
+              <>
+                <div className="flex-1 overflow-y-auto p-4 min-h-0" ref={chatRef}>
+                  {chatMessages.length === 0 ? (
+                    <div className="text-center text-gray-500 mt-8">
+                      <p className="text-base">No messages yet</p>
+                    </div>
+                  ) : (
+                    chatMessages.map((msg) => (
+                      <div key={msg.id} className={`flex ${msg.sender === "me" ? "justify-end" : "justify-start"} mb-2`}>
+                        <div className={`max-w-[75%] rounded-lg p-2 ${msg.sender === "me" ? "bg-slate-700 text-white rounded-br-none" : "bg-zinc-700 text-white rounded-bl-none"}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-semibold">{msg.sender === "me" ? "You" : "Opponent"}</span>
+                            <span className="text-xs text-gray-400">
+                              {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <p className="text-base">{msg.message}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="p-4 border-t border-zinc-800 flex-shrink-0">
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      id="chatInputDesktop"
+                      placeholder="Chat with opponent. Start typing"
+                      className="flex-1 bg-zinc-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary text-base placeholder:text-gray-500"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && e.currentTarget.value.trim() && socket && getGameIdFromPath()) {
+                          const message = e.currentTarget.value.trim();
+                          const newMessage: Message = {
+                            id: `${Date.now()}-${Math.random()}`,
+                            sender: "me",
+                            message,
+                            timestamp: new Date(),
+                          };
+                          handleAddChatMessage(newMessage);
+                          socket.emit("chat-message", { gameId: getGameIdFromPath(), message });
+                          e.currentTarget.value = "";
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const input = document.getElementById("chatInputDesktop") as HTMLInputElement;
+                        if (input && input.value.trim() && socket && getGameIdFromPath()) {
+                          const message = input.value.trim();
+                          const newMessage: Message = {
+                            id: `${Date.now()}-${Math.random()}`,
+                            sender: "me",
+                            message,
+                            timestamp: new Date(),
+                          };
+                          handleAddChatMessage(newMessage);
+                          socket.emit("chat-message", { gameId: getGameIdFromPath(), message });
+                          input.value = "";
+                        }
+                      }}
+                      className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+      {/* Mobile Chat Drawer (unchanged) */}
       <ChatPanel
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
@@ -1271,7 +1826,12 @@ export default function ChessPage() {
           isOpen={isResultModalOpen}
           result={gameResult.type}
           message={gameResult.message}
-          onClose={handleResultModalClose}
+          onClose={() =>{handleResultModalClose();
+            redirectTimerRef.current = setTimeout(() => {
+                if(guestId) router.replace("/");
+                else router.replace("/dashboard");
+              }, 5000);}
+          }
           isGuest={!!guestId}
           ratingChange={guestId ? undefined : ratingChange ?? undefined}
         />
@@ -1296,6 +1856,22 @@ export default function ChessPage() {
         onDecline={handleDeclineDraw}
         onCancel={handleCancelDrawOffer}
       />
+
+      <ConfirmDialog
+        isOpen={showLeaveConfirm}
+        title="Leave Active Game?"
+        message="You have an active game in progress. Leaving an active game counts as a resignation. Would you like to resign and leave?"
+        confirmText="Resign and Leave"
+        cancelText="Stay in Game"
+        confirmVariant="destructive"
+        onConfirm={executeResignAndLeave}
+        onCancel={() => {
+          setShowLeaveConfirm(false);
+          setPendingNavigation(null);
+        }}
+      />
+
+    </div>
     </div>
   );
 }
