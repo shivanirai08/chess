@@ -177,8 +177,8 @@ export default function LogIn() {
             </div>
 
             {/* Remember Me / Forgot */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
+            <div className="flex items-center justify-end">
+              {/* <div className="flex items-center">
                 <input
                   type="checkbox"
                   id="rememberMe"
@@ -193,7 +193,7 @@ export default function LogIn() {
                 >
                   Remember Me
                 </label>
-              </div>
+              </div> */}
 
               <Link
                 href={`/resetpwd?email=${email}&routed=true`}
