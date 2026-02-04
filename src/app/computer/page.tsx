@@ -615,7 +615,8 @@ export default function ComputerGame() {
       let resultType: "win" | "loss" | "draw" = "draw";
       
       if (currentGame.isCheckmate()) {
-        const winner = currentGame.turn() === "w" ? "white" : "black";
+        // When checkmated, it's the checkmated player's turn, so winner is the opposite color
+        const winner = currentGame.turn() === "w" ? "black" : "white";
         
         // Determine if player won or lost
         if (playerColor === winner) {
