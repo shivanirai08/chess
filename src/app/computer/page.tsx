@@ -12,6 +12,7 @@ import { PromotionDialog } from "@/components/chess/PromotionDialog";
 import ComputerGameSetup, { GameConfig } from "@/components/layout/ComputerGameSetup";
 import GameResultModal from "@/components/ui/GameResultModal";
 import { useUserStore } from "@/store/useUserStore";
+import { toast } from "sonner";
 
 type StockfishMessage = {
   bestmove?: string;
@@ -49,11 +50,40 @@ export default function ComputerGame() {
     message: string;
   } | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const disconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pageVisibilityRef = useRef(true);
   
   const stockfishRef = useRef<Worker | null>(null);
   const gameRef = useRef(game);
+  const [stockfishError, setStockfishError] = useState<string | null>(null);
+  const [sessionValid, setSessionValid] = useState(true);
   
   const { user } = useUserStore();
+
+  // Validate game state and check if user should be in this game
+  const validateGameState = useCallback(() => {
+    if (!gameStarted || gameOver) return;
+    
+    // Check if game state is valid
+    try {
+      const currentFen = game.fen();
+      if (!currentFen) {
+        toast.warning("Game state corrupted. Starting new game...");
+        resetGame();
+        return;
+      }
+      
+      // Validate game hasn't gone too long without moves
+      const moveCount = game.history().length;
+      if (moveCount > 500) {
+        toast.warning("Game seems invalid. Starting fresh...");
+        resetGame();
+      }
+    } catch (error) {
+      console.error("Error validating game state:", error);
+      setSessionValid(false);
+    }
+  }, [game, gameStarted, gameOver]);
 
   // Get difficulty label based on skill level
   const getDifficultyLabel = (level: number): string => {
@@ -65,7 +95,7 @@ export default function ComputerGame() {
     return "Master (2400+ ELO)";
   };
 
-  // Initialize Stockfish
+  // Initialize Stockfish with error boundary
   useEffect(() => {
     try {
       const stockfish = new Worker("/stockfish.js");
@@ -81,16 +111,26 @@ export default function ComputerGame() {
       };
 
       stockfish.onerror = (error) => {
-        console.error("Stockfish error:", error);
+        console.error("Stockfish worker error:", error);
+        const errorMsg = "Stockfish engine failed. Please refresh and try again.";
+        setStockfishError(errorMsg);
+        toast.error(errorMsg);
       };
 
       stockfish.postMessage("uci");
 
       return () => {
-        stockfish.terminate();
+        try {
+          stockfish.terminate();
+        } catch (e) {
+          console.error("Error terminating Stockfish:", e);
+        }
       };
     } catch (error) {
-      console.error(" Failed to initialize Stockfish:", error);
+      console.error("Failed to initialize Stockfish:", error);
+      const errorMsg = "Could not load Stockfish engine.";
+      setStockfishError(errorMsg);
+      toast.error(errorMsg);
     }
   }, []);
 
@@ -101,6 +141,46 @@ export default function ComputerGame() {
       setShowSetup(true);
     }
   }, []);
+
+  // Monitor page visibility and disconnection
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      pageVisibilityRef.current = !document.hidden;
+      
+      if (!document.hidden && gameStarted && !gameOver) {
+        // Page became visible again - validate game state
+        validateGameState();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    
+    // Monitor for unexpected disconnections (inactivity)
+    if (gameStarted && !gameOver) {
+      if (disconnectTimerRef.current) {
+        clearTimeout(disconnectTimerRef.current);
+      }
+      
+      disconnectTimerRef.current = setTimeout(() => {
+        if (!pageVisibilityRef.current) return; // Page is hidden, don't warn
+        
+        // Give user 30 seconds to reconnect before redirecting
+        const warningTimer = setTimeout(() => {
+          if (sessionValid && gameStarted && !gameOver) {
+            toast.error("Session lost. Redirecting to game...");
+            router.push(`/dashboard`);
+          }
+        }, 30000);
+      }, 120000); // Check every 2 minutes
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (disconnectTimerRef.current) {
+        clearTimeout(disconnectTimerRef.current);
+      }
+    };
+  }, [gameStarted, gameOver, sessionValid, router]);
 
   // Detect desktop/mobile
   useEffect(() => {
@@ -280,7 +360,13 @@ export default function ComputerGame() {
 
   const requestComputerMove = useCallback((currentGame: Chess) => {
     if (!stockfishRef.current) {
-      console.error(" Stockfish not initialized!");
+      console.error("Stockfish not initialized");
+      toast.error("AI engine not ready. Please refresh the page.");
+      return;
+    }
+
+    if (stockfishError) {
+      console.error("Cannot request move - Stockfish has errors");
       return;
     }
 
@@ -295,15 +381,17 @@ export default function ComputerGame() {
     } catch (error) {
       console.error("Error requesting computer move:", error);
       setThinking(false);
+      toast.error("Failed to get AI move. Please try again.");
     }
-  }, [difficulty]);
+  }, [difficulty, stockfishError]);
 
   const makeComputerMove = useCallback((moveString: string) => {
     const currentGame = gameRef.current;
 
     if (!moveString || moveString === "(none)") {
-      console.error(" Invalid move from Stockfish:", moveString);
+      console.error("Invalid move from Stockfish:", moveString);
       setThinking(false);
+      toast.error("Stockfish returned invalid move. Game paused.");
       return;
     }
 
@@ -333,10 +421,13 @@ export default function ComputerGame() {
         
         checkGameStatus(currentGame);
       } else {
-        console.error("Invalid computer move");
+        console.error("Computer move validation failed:", { from, to, promotion });
+        toast.error("Invalid AI move. Restarting game...");
+        resetGame();
       }
     } catch (error) {
       console.error("Error making computer move:", error);
+      toast.error("Game error occurred. Please restart.");
     } finally {
       setThinking(false);
     }
@@ -465,6 +556,7 @@ export default function ComputerGame() {
       }
     } catch (e) {
       console.error("Error making move on square click:", e);
+      toast.error("Failed to make move. Please try again.");
     }
 
     setMoveFrom("");
@@ -656,10 +748,22 @@ export default function ComputerGame() {
   };
 
   const resetGame = () => {
+    // Clear all timers
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (disconnectTimerRef.current) {
+      clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
+    }
+    
+    // Reset all game state
     setGameStarted(false);
     setShowSetup(true);
     const newGame = new Chess();
     setGame(newGame);
+    gameRef.current = newGame;
     setChessPosition(newGame.fen());
     setMoves([]);
     setCurrentMoveIndex(-1);
@@ -667,6 +771,7 @@ export default function ComputerGame() {
     setGameOver(false);
     setResult("");
     setGameResult(null);
+    setIsResultModalOpen(false);
     setThinking(false);
     setMoveFrom("");
     setOptionSquares({});
@@ -674,12 +779,7 @@ export default function ComputerGame() {
     setPromotionMove(null);
     setPlayerTime(0);
     setComputerTime(0);
-    
-    // Clear timer
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    setSessionValid(true);
   };
 
   // Move navigation
@@ -1084,6 +1184,7 @@ export default function ComputerGame() {
             isOpen={isResultModalOpen}
             onClose={() => {
               setIsResultModalOpen(false);
+              resetGame();
             }}
             result={gameResult.type}
             message={gameResult.message}
